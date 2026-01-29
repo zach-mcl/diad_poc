@@ -47,7 +47,8 @@ Windows:
 .venv\Scripts\activate
 
 3. Install dependencies
-pip install -r requirements.txt
+use pip to install 
+duckdb and pandas 
 
 4. Add CSV files
 Place all CSV files into the data/ directory.
