@@ -1,5 +1,6 @@
 
 python3 --version
+
 python3 -m tkinter   (a small window should open)
 
 source .venv/bin/activate
