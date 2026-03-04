@@ -5,7 +5,7 @@ import pandas as pd
 
 from UI.state import AppState
 
-from app.db import connect, load_csvs, get_schema_map, get_schema_text, build_categorical_index
+from app.db import connect, load_csvs, load_xlsx,  get_schema_map, get_schema_text, build_categorical_index
 from app.llm import nl_to_sql
 from app.validate import strip_code_fences, sanitize_sql, is_select_only
 
@@ -50,14 +50,26 @@ class Controller:
         def work():
             try:
                 self._set_busy(True, None)
-
+                #TODO add xlsx support
                 csvs = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".csv"])
-                if not csvs:
-                    self._set_busy(False, f"No CSV files found in: {folder}")
+                #added xlsx variable -jm
+                xlsx = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".xlsx"])
+                if not csvs and not xlsx: # changed to also error check for no xlsx -jm
+                    self._set_busy(False, f"No CSV OR XLSX files found in: {folder}")
                     return
 
                 self.con = connect()
-                tables = load_csvs(self.con, csvs)
+                #tables = load_csvs(self.con, csvs) - Old -jm
+                tables =[]
+                if csvs:
+                    tables.extend(load_csvs(self.con, csvs))
+                if xlsx:
+                    tables.extend(load_xlsx(self.con, xlsx))
+                #changed aboce to support xlsx -jm
+
+
+
+                #in this block
 
                 schema_map = get_schema_map(self.con)
                 categorical_index = build_categorical_index(self.con, schema_map, max_cols_total=60, values_limit=50)
