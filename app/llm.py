@@ -65,3 +65,5 @@ USER REQUEST:
 SQL:
 """
     return ollama_generate(model, prompt)
+
+
