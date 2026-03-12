@@ -100,10 +100,15 @@ class TkApp(TkinterDnD.Tk):
         self.status = ttk.Label(self, text="", anchor="w")
         self.status.grid(row=2, column=0, columnspan=2, sticky="ew")
 
-    def on_load_folder(self):
+    #file loading on button pressed
+    def on_load_folder(self, folder=None):
         folder = filedialog.askdirectory(title="Select folder with CSV files")
         if not folder:
             return
+        self.controller.load_folder(Path(folder))
+    
+    #file loading when DND
+    def load_folder(self, folder):
         self.controller.load_folder(Path(folder))
     
     def on_folder_drop(self, event):
@@ -117,6 +122,8 @@ class TkApp(TkinterDnD.Tk):
                 for file in os.listdir(path):
                     if file.lower().endswith(".csv"):
                         self.tables_list.insert(tk.END, file)
+                #uploading files into database
+                self.load_folder(path)
 
     def on_send(self):
         text = self.chat_entry.get().strip()
