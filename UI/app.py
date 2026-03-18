@@ -9,12 +9,19 @@ import pandas as pd
 from UI.state import AppState
 from UI.controller import Controller
 
+import os
+import tkinterdnd2
 
-class TkApp:
-    def __init__(self, root: tk.Tk):
-        self.root = root
-        self.root.title("DIAD PoC")
-        self.root.geometry("1100x700")
+from tkinterdnd2 import TkinterDnD, DND_FILES
+
+
+class TkApp(TkinterDnD.Tk):
+    
+    def __init__(self):
+        #self.root = root
+        super().__init__()
+        self.title("DIAD PoC")
+        self.geometry("1100x700")
 
         self.state = AppState()
         self.controller = Controller(self.state, self.render)
@@ -24,13 +31,13 @@ class TkApp:
 
     def _build_layout(self):
         # Top-level split: left (data), right (schema), bottom (chat/results)
-        self.root.rowconfigure(0, weight=1)
-        self.root.rowconfigure(1, weight=2)
-        self.root.columnconfigure(0, weight=1)
-        self.root.columnconfigure(1, weight=2)
+        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=2)
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=2)
 
         # Left: file/table panel
-        self.left = ttk.Frame(self.root, padding=10)
+        self.left = ttk.Frame(self, padding=10)
         self.left.grid(row=0, column=0, sticky="nsew")
         self.left.rowconfigure(2, weight=1)
 
@@ -43,8 +50,12 @@ class TkApp:
         self.tables_list = tk.Listbox(self.left, height=10)
         self.tables_list.grid(row=2, column=0, sticky="nsew")
 
+        # Enable drag-and-drop on the left panel
+        self.left.drop_target_register(DND_FILES)
+        self.left.dnd_bind("<<Drop>>", self.on_folder_drop)
+
         # Right: schema + categoricals
-        self.right = ttk.Frame(self.root, padding=10)
+        self.right = ttk.Frame(self, padding=10)
         self.right.grid(row=0, column=1, sticky="nsew")
         self.right.rowconfigure(0, weight=1)
         self.right.rowconfigure(1, weight=1)
@@ -59,7 +70,7 @@ class TkApp:
         self.cats_text.configure(state="disabled")
 
         # Bottom: chat + results
-        self.bottom = ttk.Frame(self.root, padding=10)
+        self.bottom = ttk.Frame(self, padding=10)
         self.bottom.grid(row=1, column=0, columnspan=2, sticky="nsew")
         self.bottom.rowconfigure(0, weight=2)
         self.bottom.rowconfigure(1, weight=0)
@@ -86,14 +97,33 @@ class TkApp:
         self.results_text.configure(state="disabled")
 
         # Status bar
-        self.status = ttk.Label(self.root, text="", anchor="w")
+        self.status = ttk.Label(self, text="", anchor="w")
         self.status.grid(row=2, column=0, columnspan=2, sticky="ew")
 
-    def on_load_folder(self):
+    #file loading on button pressed
+    def on_load_folder(self, folder=None):
         folder = filedialog.askdirectory(title="Select folder with CSV files")
         if not folder:
             return
         self.controller.load_folder(Path(folder))
+    
+    #file loading when DND
+    def load_folder(self, folder):
+        self.controller.load_folder(Path(folder))
+    
+    def on_folder_drop(self, event):
+        #event.data contain dropped paths
+        paths = self.tk.splitlist(event.data)
+        for path in paths:
+            if os.path.isdir(path):
+                #clear current list
+                self.tables_list.delete(0, tk.END)
+                #load csv files from folder
+                for file in os.listdir(path):
+                    if file.lower().endswith(".csv"):
+                        self.tables_list.insert(tk.END, file)
+                #uploading files into database
+                self.load_folder(path)
 
     def on_send(self):
         text = self.chat_entry.get().strip()
