@@ -181,6 +181,9 @@ class MainPage(ttk.Frame):
         self.status = ttk.Label(self, text="", anchor="w")
         self.status.grid(row=2, column=0, columnspan=2, sticky="ew")
 
+        self.left.drop_target_register(DND_FILES)
+        self.left.dnd_bind("<<Drop>>", self.on_folder_drop)
+
     def on_load_folder(self):
         folder = filedialog.askdirectory(title="Select folder with CSV files")
         if not folder:
