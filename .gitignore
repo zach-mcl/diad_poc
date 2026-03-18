@@ -2,3 +2,7 @@
 __pycache__/
 output.csv
 .DS_Store
+/diad/bin
+*.py
+/diad/lib
+/diad

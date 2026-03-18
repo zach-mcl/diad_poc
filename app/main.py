@@ -9,6 +9,7 @@ import pandas as pd
 from app.db import (
     connect,
     load_csvs,
+    load_xlsx, #added load_xlsx -jm
     get_schema_text,
     get_schema_map,
     build_categorical_index,
@@ -18,11 +19,12 @@ from app.llm import nl_to_sql
 from app.validate import strip_code_fences, sanitize_sql, is_select_only
 
 
-def find_csvs(folder: Path) -> list[Path]:
+#TODO - Convert below to find csvs and xlsx
+# changed find_csvs to find data and added .xlsx to bottom -jm
+def find_data(folder: Path) -> list[Path]:
     if not folder.exists() or not folder.is_dir():
         raise FileNotFoundError(f"Folder not found: {folder}")
-    return sorted([p for p in folder.iterdir() if p.suffix.lower() == ".csv"])
-
+    return sorted([p for p in folder.iterdir() if p.suffix.lower() in (".csv", ".xlsx")])
 
 def format_categorical_text(categorical_index: dict[tuple[str, str], list[str]]) -> str:
     """
@@ -265,13 +267,19 @@ def main() -> int:
     folder = Path(sys.argv[1]).expanduser()
     model = sys.argv[2] if len(sys.argv) >= 3 else "duckdb-nsql"
 
-    csvs = find_csvs(folder)
-    if not csvs:
+   #TODO find csvs and find xlsx
+
+    #changed csvs to Supported_Files -jm
+    Supported_Files = find_data(folder)
+    if not Supported_Files:
         print(f"No CSV files found in {folder}")
         return 1
 
     con = connect()
     tables = load_csvs(con, csvs)
+
+    csvs = [p for p in Supported_Files if p.suffix.lower() == ".csv"]
+    xlsx = [p for p in Supported_Files if p.suffix.lower() == ".xlsx"]
 
     print("\nLoaded tables:")
     for t in tables:

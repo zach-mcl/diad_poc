@@ -9,6 +9,7 @@ import pandas as pd
 from UI.state import AppState
 from UI.controller import Controller
 
+
 import os
 import tkinterdnd2
 
@@ -120,7 +121,7 @@ class TkApp(TkinterDnD.Tk):
                 self.tables_list.delete(0, tk.END)
                 #load csv files from folder
                 for file in os.listdir(path):
-                    if file.lower().endswith(".csv"):
+                    if file.lower().endswith(".csv" or ".xlsx"):
                         self.tables_list.insert(tk.END, file)
                 #uploading files into database
                 self.load_folder(path)

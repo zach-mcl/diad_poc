@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import duckdb
+import pandas as pd #need to import pandas for read_excel function -jm
 
 
 # ----------------------------
@@ -40,7 +41,17 @@ def load_csvs(con: duckdb.DuckDBPyConnection, csv_paths: list[Path]) -> list[str
         table_names.append(t)
     return table_names
 
-
+#TODO load_xlsx
+#load xlsx files function -jm
+def load_xlsx(con: duckdb.DuckDBPyConnection, xlsx_paths: list[Path]) -> list[str]:
+    table_names: list[str] = []
+    for p in xlsx_paths:
+        t = _safe_table_name(p.name)
+        df = pd.read_excel(p)
+        df.columns = [re.sub(r"[^a-z0-9_]+", "_", columns.strip().lower()).strip("_") for columns in df.columns]
+        con.execute(f'CREATE OR REPLACE TABLE "{t}" AS SELECT * FROM df')
+        table_names.append(t)
+    return table_names
 # ----------------------------
 # Schema helpers
 # ----------------------------

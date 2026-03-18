@@ -7,4 +7,9 @@ source .venv/bin/activate
 -
 pip3 install duckdb pandas
 -
-python3 run_ui.py
+(maybe needed for drag & drop):
+pip3 install tkinterdnd2
+-
+(if still does not work):
+brew install tkdnd
+-
