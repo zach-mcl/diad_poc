@@ -183,8 +183,27 @@ class MainPage(ttk.Frame):
 
     def on_load_folder(self):
         folder = filedialog.askdirectory(title="Select folder with CSV files")
-        if folder:
-            self.controller.load_folder(Path(folder))
+        if not folder:
+            return
+        self.controller.load_folder(Path(folder))
+    
+    #file loading when DND
+    def load_folder(self, folder):
+        self.controller.load_folder(Path(folder))
+    
+    def on_folder_drop(self, event):
+        #event.data contain dropped paths
+        paths = self.tk.splitlist(event.data)
+        for path in paths:
+            if os.path.isdir(path):
+                #clear current list
+                self.tables_list.delete(0, tk.END)
+                #load csv files from folder
+                for file in os.listdir(path):
+                    if file.lower().endswith(".csv" or ".xlsx"):
+                        self.tables_list.insert(tk.END, file)
+                #uploading files into database
+                self.load_folder(path)
 
     def on_send(self):
         text = self.chat_entry.get().strip()
