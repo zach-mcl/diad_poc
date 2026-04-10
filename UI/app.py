@@ -106,6 +106,42 @@ class UploadPage(ttk.Frame):
                 self.app.show_page(MainPage)
 
 # ------------
+# QUESTION ICON POPUP
+# ------------
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip = None
+
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+    
+    def show(self, event=None):
+        x = self.widget.winfo_pointerx() + 10
+        y = self.widget.winfo_pointery() + 10
+
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+
+        label = tk.Label(
+            self.tip, 
+            text=self.text, 
+            bg="#ffffe0",
+            fg="black", 
+            relief="solid", 
+            borderwidth=1
+            )
+        label.pack()
+    
+    def hide(self, event=None):
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
+
+# ------------
 # MAIN PAGE 
 # ------------
 class MainPage(ttk.Frame):
@@ -115,9 +151,11 @@ class MainPage(ttk.Frame):
         self.controller = app.controller
         self.state = app.state
         self._build_layout()
+        
 
     def _build_layout(self):
-        # SAME LAYOUT (UNCHANGED)
+            
+       # SAME LAYOUT (UNCHANGED)
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=2)
         self.columnconfigure(0, weight=1)
@@ -136,6 +174,18 @@ class MainPage(ttk.Frame):
 
         self.tables_list = tk.Listbox(self.left, height=10)
         self.tables_list.grid(row=2, column=0, sticky="nsew")
+        #LEFT PANEL HELP ICON
+        self.left_icon = tk.Label(self.tables_list, 
+            text="?", 
+            cursor="question_arrow", 
+            fg="white",
+            bg=self.tables_list.cget("bg"),
+            font=("Arial", 18, "bold"),
+            padx=4,
+            pady=1
+        )
+        self.left_icon.place(relx=1.0, rely=0.0, anchor="ne")#Placing icon
+        ToolTip(self.left_icon, "Files uploaded will appear here.\nDrag and drop, or use the 'Load Folder' button to\nupload a new folder containing .csv or .xlsx files.")
 
         # Right panel
         self.right = ttk.Frame(self, padding=10)
@@ -143,14 +193,38 @@ class MainPage(ttk.Frame):
         self.right.rowconfigure(0, weight=1)
         self.right.rowconfigure(1, weight=1)
         self.right.columnconfigure(0, weight=1)
-
+        # Schema Text
         self.schema_text = tk.Text(self.right, height=12, wrap="none")
         self.schema_text.grid(row=0, column=0, sticky="nsew")
         self.schema_text.configure(state="disabled")
-
+        # Schema Help Icon
+        self.schema_icon = tk.Label(self.schema_text, 
+        text="?", 
+        cursor="question_arrow", 
+        fg="white",
+        bg=self.schema_text.cget("bg"),
+        font=("Arial", 18, "bold"),
+        padx=4,
+        pady=1
+        )
+        self.schema_icon.place(relx=1.0, rely=0.0, anchor="ne")#Placing icon
+        ToolTip(self.schema_icon, "Schema data will appear in this box.")
+        # Categories Text
         self.cats_text = tk.Text(self.right, height=10, wrap="none")
         self.cats_text.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
         self.cats_text.configure(state="disabled")
+        # Categories Help Icon
+        self.cats_icon = tk.Label(self.cats_text, 
+        text="?", 
+        cursor="question_arrow", 
+        fg="white",
+        bg=self.cats_text.cget("bg"),
+        font=("Arial", 18, "bold"),
+        padx=4,
+        pady=1
+        )
+        self.cats_icon.place(relx=1.0, rely=0.0, anchor="ne")#Placing icon
+        ToolTip(self.cats_icon, "Categorical data will appear in this box.")
 
         # Bottom panel
         self.bottom = ttk.Frame(self, padding=10)
@@ -162,6 +236,20 @@ class MainPage(ttk.Frame):
         self.chat_history = tk.Text(self.bottom, height=10, wrap="word")
         self.chat_history.grid(row=0, column=0, sticky="nsew")
         self.chat_history.configure(state="disabled")
+        #CHAT HISTORY HELP ICON
+        self.chat_icon = tk.Label(
+            self.chat_history,
+            text="?",
+            fg="white",
+            bg=self.chat_history.cget("bg"),
+            font=("Arial", 18, "bold"),
+            cursor="question_arrow",
+            borderwidth=0,
+            highlightthickness=0
+        )
+
+        self.chat_icon.place(relx=1.0, rely=0.0, anchor="ne", x=-6, y=6) #Placing icon
+        ToolTip(self.chat_icon, "Your prompt, chat history, resulting SQL query,\nand output file will appear in this box.\nDouble check the SQL logic!")
 
         entry_row = ttk.Frame(self.bottom)
         entry_row.grid(row=1, column=0, sticky="ew", pady=(8, 8))
@@ -177,6 +265,20 @@ class MainPage(ttk.Frame):
         self.results_text = tk.Text(self.bottom, height=10, wrap="none")
         self.results_text.grid(row=2, column=0, sticky="nsew")
         self.results_text.configure(state="disabled")
+        #RESULTS HELP LABEL
+        self.results_icon = tk.Label(
+            self.results_text,
+            text="?",
+            fg="white",
+            bg=self.results_text.cget("bg"),
+            font=("Arial", 18, "bold"),
+            cursor="question_arrow",
+            borderwidth=0,
+            highlightthickness=0
+        )
+
+        self.results_icon.place(relx=1.0, rely=0.0, anchor="ne", x=-6, y=6)#Placing icon
+        ToolTip(self.results_icon, "Data results will appear in this box after loading.\nCheck your loading status in the bottom left of the UI!")
 
         self.status = ttk.Label(self, text="", anchor="w")
         self.status.grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -184,7 +286,7 @@ class MainPage(ttk.Frame):
         self.left.drop_target_register(DND_FILES)
         self.left.dnd_bind("<<Drop>>", self.on_folder_drop)
 
-    def on_load_folder(self):
+    def on_load_folder(self): #loading folder
         folder = filedialog.askdirectory(title="Select folder with CSV files")
         if not folder:
             return
