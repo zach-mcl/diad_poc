@@ -5,9 +5,14 @@ import pandas as pd
 
 from UI.state import AppState
 
+<<<<<<< Updated upstream
 from app.db import connect, load_csvs, load_xlsx,  get_schema_map, get_schema_text, build_categorical_index
 from app.llm import nl_to_sql
 from app.validate import strip_code_fences, sanitize_sql, is_select_only
+=======
+from app.db import connect, load_csvs, get_schema_map, get_schema_text, build_categorical_index
+from app.schema_aliases import build_alias_index
+>>>>>>> Stashed changes
 
 
 def _format_categoricals_for_llm(cat_index: dict[tuple[str, str], list[str]], limit_vals: int = 30) -> str:
@@ -42,11 +47,52 @@ class Controller:
         self.state.error = error
         self.on_state_changed()
 
+<<<<<<< Updated upstream
     def load_folder(self, folder: Path):
         """
         Load CSVs -> DuckDB -> schema -> categorical index.
         Runs in background thread so UI doesn't freeze.
         """
+=======
+    def _build_router_context(self, model: str = "duckdb-nsql") -> RouterContext:
+        if self.con is None:
+            raise RuntimeError("DuckDB connection is not initialized.")
+
+        schema_text = get_schema_text(self.con)
+        schema_map = get_schema_map(self.con)
+        categorical_index = build_categorical_index(
+            self.con,
+            schema_map,
+            max_cols_total=60,
+            values_limit=50,
+        )
+        categorical_text = format_categorical_text(categorical_index)
+
+        alias_index = build_alias_index(
+            schema_map=schema_map,
+            categorical_index=categorical_index,
+            model=model,
+            schema_text=schema_text,
+            categorical_text=categorical_text,
+        )
+
+        source_files = [str(p) for p in getattr(self.state, "csv_files", [])]
+        source_files.extend(str(p) for p in getattr(self.state, "xlsx_files", []))
+
+        return RouterContext(
+            con=self.con,
+            model=model,
+            schema_text=schema_text,
+            schema_map=schema_map,
+            categorical_index=categorical_index,
+            categorical_text=categorical_text,
+            alias_index=alias_index,
+            source_files=source_files,
+            output_dir="outputs",
+        )
+
+    def load_folder(self, folder: Path, model: str = "duckdb-nsql"):
+>>>>>>> Stashed changes
         def work():
             try:
                 self._set_busy(True, None)
@@ -90,11 +136,116 @@ class Controller:
 
         threading.Thread(target=work, daemon=True).start()
 
+<<<<<<< Updated upstream
     def send_chat(self, user_text: str, model: str = "duckdb-nsql"):
         """
         Plain English -> LLM -> SQL -> validate -> execute -> preview -> export path.
         Runs in background thread.
         """
+=======
+    def _format_debug_message(self, user_text: str, result) -> str:
+        metadata = result.metadata or {}
+
+        parts: list[str] = []
+        parts.append(f"Route: {result.route.value}")
+        parts.append(f"Reason: {result.reason}")
+
+        tool_name = getattr(result, "tool_name", None)
+        if tool_name:
+            parts.append(f"Tool: {tool_name}")
+
+        execution_mode = metadata.get("execution_mode")
+        if execution_mode:
+            parts.append(f"Execution mode: {execution_mode}")
+
+        parts.append("")
+        parts.append("Original query:")
+        parts.append(str(metadata.get("original_user_request") or user_text))
+
+        grounded_user_request = metadata.get("grounded_user_request")
+        if grounded_user_request:
+            parts.append("")
+            parts.append("Grounded query:")
+            parts.append(str(grounded_user_request))
+
+        grounding_replacements = metadata.get("grounding_replacements")
+        if grounding_replacements:
+            parts.append("")
+            parts.append("Grounding replacements:")
+            for item in grounding_replacements:
+                parts.append(f"- {item}")
+
+        preferred_table = metadata.get("preferred_table")
+        if preferred_table:
+            parts.append("")
+            parts.append(f"Preferred table: {preferred_table}")
+
+        mentioned_tables = metadata.get("mentioned_tables")
+        if mentioned_tables:
+            parts.append(f"Mentioned tables: {mentioned_tables}")
+
+        bound_constraints = metadata.get("bound_constraints")
+        if bound_constraints:
+            parts.append("Bound constraints:")
+            for item in bound_constraints:
+                parts.append(f"- {item}")
+
+        if result.message:
+            parts.append("")
+            parts.append("Message:")
+            parts.append(result.message)
+
+        raw_model_output = metadata.get("raw_model_output")
+        if raw_model_output:
+            parts.append("")
+            parts.append("Raw model output:")
+            parts.append(str(raw_model_output))
+
+        initial_sql = metadata.get("initial_sql")
+        if initial_sql:
+            parts.append("")
+            parts.append("Initial SQL:")
+            parts.append(str(initial_sql))
+
+        if result.sql:
+            parts.append("")
+            parts.append("Final SQL:")
+            parts.append(result.sql)
+
+        if "auto_join_changed" in metadata:
+            parts.append("")
+            parts.append(f"Auto join changed SQL: {metadata.get('auto_join_changed')}")
+
+        missing_columns = metadata.get("missing_columns")
+        if missing_columns:
+            parts.append("Missing columns detected:")
+            for item in missing_columns:
+                parts.append(f"- {item}")
+
+        rewrite_model_output = metadata.get("rewrite_model_output")
+        if rewrite_model_output:
+            parts.append("")
+            parts.append("Rewrite model output:")
+            parts.append(str(rewrite_model_output))
+
+        row_count = metadata.get("row_count")
+        if row_count is not None:
+            parts.append("")
+            parts.append(f"Row count: {row_count}")
+
+        if result.output_path:
+            parts.append("")
+            parts.append(f"Output path: {result.output_path}")
+
+        if result.error:
+            parts.append("")
+            parts.append("Error:")
+            parts.append(str(result.error))
+
+        return "\n".join(parts)
+
+    def send_chat(self, user_text: str, model: str = "duckdb-nsql"):
+>>>>>>> Stashed changes
         if not self.con:
             self.state.error = "Load a folder with CSVs first."
             self.on_state_changed()

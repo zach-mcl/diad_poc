@@ -399,4 +399,8 @@ class MainPage(ttk.Frame):
 # ------------------------
 if __name__ == "__main__":
     app = TkApp()
+<<<<<<< Updated upstream
     app.mainloop()
+=======
+    app.mainloop()
+>>>>>>> Stashed changes
