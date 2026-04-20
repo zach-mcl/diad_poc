@@ -19,5 +19,10 @@ class AppState:
     result_preview: Any = None
     export_path: Path | None = None
 
+    available_projects: list[dict[str, Any]] = field(default_factory=list)
+    current_project_name: str | None = None
+    current_project_path: Path | None = None
+    current_project_created_at: str | None = None
+
     error: str | None = None
     is_busy: bool = False
