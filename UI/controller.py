@@ -5,14 +5,10 @@ import pandas as pd
 
 from UI.state import AppState
 
-<<<<<<< Updated upstream
-from app.db import connect, load_csvs, load_xlsx,  get_schema_map, get_schema_text, build_categorical_index
+from app.db import connect, load_csvs, load_xlsx, get_schema_map, get_schema_text, build_categorical_index
 from app.llm import nl_to_sql
 from app.validate import strip_code_fences, sanitize_sql, is_select_only
-=======
-from app.db import connect, load_csvs, get_schema_map, get_schema_text, build_categorical_index
 from app.schema_aliases import build_alias_index
->>>>>>> Stashed changes
 
 
 def _format_categoricals_for_llm(cat_index: dict[tuple[str, str], list[str]], limit_vals: int = 30) -> str:
