@@ -3,7 +3,11 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, filedialog
 from pathlib import Path
+<<<<<<< Updated upstream
 
+=======
+from turtle import title
+>>>>>>> Stashed changes
 import pandas as pd
 
 from UI.state import AppState
@@ -26,6 +30,189 @@ class TkApp(TkinterDnD.Tk):
         self.state = AppState()
         self.controller = Controller(self.state, self.render)
 
+<<<<<<< Updated upstream
+=======
+        # Container for pages
+        self.container = ttk.Frame(self)
+        self.container.pack(fill="both", expand=True)
+
+        self.container.rowconfigure(0, weight=1)
+        self.container.columnconfigure(0, weight=1)
+
+        self.pages = {}
+
+        for Page in (UploadPage, MainPage):
+            page = Page(self.container, self)
+            self.pages[Page] = page
+            page.grid(row=0, column=0, sticky="nsew")
+
+        self.show_page(UploadPage)
+
+    def show_page(self, page_class):
+        page = self.pages[page_class]
+        page.tkraise()
+
+    def render(self):
+        # Always render main page (data lives there)
+        self.pages[MainPage].render()
+
+
+# ------------
+# LANDING PAGE
+# ------------
+class UploadPage(ttk.Frame):
+    def __init__(self, parent, app: TkApp):
+        super().__init__(parent, padding=20)
+        self.app = app
+
+        # Configure columns (50/50 split)
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        # LEFT SIDE (Instructions)
+        self.left_frame = ttk.Frame(self)
+        self.left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 20))
+
+        # Center container frame
+        self.center_frame = ttk.Frame(self.left_frame)
+        self.center_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+        title = ttk.Label(
+            self.center_frame,
+            text="Ready to make your data \nwork for you?",
+            font=("Arial", 30, "bold"),
+            anchor="w"
+        )
+        title.pack(anchor="w", pady=(0, 10))
+
+        instructions = ttk.Label(
+            self.center_frame,
+            text=(
+                "Begin by:\n\n"
+                " - Preparing a folder with CSV or .XLSX files\n"
+                " - Drag and drop the folder on the right\n"
+                "   OR click the button to browse\n\n"
+                "Then, let our app do the work for you!\n\n"
+            ),
+            justify="left",
+            anchor="w"
+        )
+        instructions.pack(anchor="w")
+
+        # -------------------------
+        # RIGHT SIDE (Upload Area)
+        # -------------------------
+        self.right_frame = ttk.Frame(self)
+        self.right_frame.grid(row=0, column=1, sticky="nsew")
+
+        self.right_frame.columnconfigure(0, weight=1)
+        self.right_frame.rowconfigure(1, weight=1)
+
+        label = ttk.Label(
+            self.right_frame,
+            text="Upload Files",
+            font=("Arial", 16)
+        )
+        label.grid(row=0, column=0, pady=10)
+
+        # Drag-and-drop area
+        self.drop_area = ttk.Frame(self.right_frame, borderwidth=2, relief="ridge")
+        self.drop_area.grid(row=1, column=0, sticky="nsew", pady=10)
+
+        drop_label = ttk.Label(
+            self.drop_area,
+            text="Drag & Drop Folder Here",
+            anchor="center"
+        )
+        drop_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.drop_area.drop_target_register(DND_FILES)
+        self.drop_area.dnd_bind("<<Drop>>", self.on_folder_drop)
+
+        # Button fallback
+        self.btn_load = ttk.Button(
+            self.right_frame,
+            text="Select Folder",
+            command=self.on_load_folder
+        )
+        self.btn_load.grid(row=2, column=0, pady=10)
+
+        self.status_label = ttk.Label(self.right_frame, text="")
+        self.status_label.grid(row=3, column=0)
+
+    def on_load_folder(self):
+        folder = filedialog.askdirectory(title="Select folder with CSV files")
+        if not folder:
+            return
+        self.start_loading(folder)
+
+    def on_folder_drop(self, event):
+        paths = self.app.tk.splitlist(event.data)
+        for path in paths:
+            if os.path.isdir(path):
+                self.start_loading(path)
+
+    def start_loading(self, folder):
+        self.status_label.config(text=f"Loading: {folder}")
+        self.app.controller.load_folder(Path(folder))
+        self.after(100, self.check_loading)
+
+    def check_loading(self):
+        if self.app.state.is_busy:
+            self.after(100, self.check_loading)
+        else:
+            if self.app.state.error:
+                self.status_label.config(text=f"Error: {self.app.state.error}")
+            else:
+                self.app.show_page(MainPage)
+
+# ------------
+# QUESTION ICON POPUP
+# ------------
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip = None
+
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+    
+    def show(self, event=None):
+        x = self.widget.winfo_pointerx() + 10
+        y = self.widget.winfo_pointery() + 10
+
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+
+        label = tk.Label(
+            self.tip, 
+            text=self.text, 
+            bg="#ffffe0",
+            fg="black", 
+            relief="solid", 
+            borderwidth=1
+            )
+        label.pack()
+    
+    def hide(self, event=None):
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
+
+# ------------
+# MAIN PAGE 
+# ------------
+class MainPage(ttk.Frame):
+    def __init__(self, parent, app: TkApp):
+        super().__init__(parent, padding=10)
+        self.app = app
+        self.controller = app.controller
+        self.state = app.state
+>>>>>>> Stashed changes
         self._build_layout()
         self.render()
 
