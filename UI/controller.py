@@ -1,55 +1,36 @@
 from __future__ import annotations
+
 from pathlib import Path
 import threading
 import pandas as pd
 
 from UI.state import AppState
 
-from app.db import connect, load_csvs, load_xlsx, get_schema_map, get_schema_text, build_categorical_index
-from app.llm import nl_to_sql
-from app.validate import strip_code_fences, sanitize_sql, is_select_only
+from app.db import connect, load_csvs, get_schema_map, get_schema_text, build_categorical_index
 from app.schema_aliases import build_alias_index
 
+try:
+    from app.db import load_xlsx
+except ImportError:
+    load_xlsx = None
 
-def _format_categoricals_for_llm(cat_index: dict[tuple[str, str], list[str]], limit_vals: int = 30) -> str:
-    # simple + unambiguous format
-    lines = []
-    for (t, c), vals in sorted(cat_index.items(), key=lambda x: (x[0][0].lower(), x[0][1].lower())):
-        clean = []
-        seen = set()
-        for v in vals:
-            s = str(v).strip()
-            if not s:
-                continue
-            if s not in seen:
-                clean.append(s)
-                seen.add(s)
-        if clean:
-            shown = clean[:limit_vals]
-            quoted = ", ".join(f'"{v.replace(chr(34), "")}"' for v in shown)
-            suffix = " ..." if len(clean) > limit_vals else ""
-            lines.append(f'- "{t}"."{c}" allowed_values=[{quoted}]{suffix}')
-    return "\n".join(lines)
+from app.router import route_request
+from app.router_types import RouterContext
+from app.sql_flow import format_categorical_text
 
 
 class Controller:
     def __init__(self, state: AppState, on_state_changed):
         self.state = state
         self.on_state_changed = on_state_changed
-        self.con = None  # duckdb connection
+        self.con = None
+        self.router_ctx: RouterContext | None = None
 
     def _set_busy(self, busy: bool, error: str | None = None):
         self.state.is_busy = busy
         self.state.error = error
         self.on_state_changed()
 
-<<<<<<< Updated upstream
-    def load_folder(self, folder: Path):
-        """
-        Load CSVs -> DuckDB -> schema -> categorical index.
-        Runs in background thread so UI doesn't freeze.
-        """
-=======
     def _build_router_context(self, model: str = "duckdb-nsql") -> RouterContext:
         if self.con is None:
             raise RuntimeError("DuckDB connection is not initialized.")
@@ -88,36 +69,45 @@ class Controller:
         )
 
     def load_folder(self, folder: Path, model: str = "duckdb-nsql"):
->>>>>>> Stashed changes
         def work():
             try:
                 self._set_busy(True, None)
-                #TODO add xlsx support
+
                 csvs = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".csv"])
-                #added xlsx variable -jm
-                xlsx = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".xlsx"])
-                if not csvs and not xlsx: # changed to also error check for no xlsx -jm
-                    self._set_busy(False, f"No CSV OR XLSX files found in: {folder}")
+                xlsxs = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".xlsx"])
+
+                if not csvs and not xlsxs:
+                    self._set_busy(False, f"No CSV or XLSX files found in: {folder}")
                     return
 
                 self.con = connect()
-                #tables = load_csvs(self.con, csvs) - Old -jm
-                tables =[]
+                tables: list[str] = []
+
                 if csvs:
                     tables.extend(load_csvs(self.con, csvs))
-                if xlsx:
-                    tables.extend(load_xlsx(self.con, xlsx))
-                #changed aboce to support xlsx -jm
 
-
-
-                #in this block
+                if xlsxs:
+                    if load_xlsx is None:
+                        self.state.messages.append(
+                            {
+                                "role": "assistant",
+                                "content": "Warning: XLSX files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.",
+                            }
+                        )
+                    else:
+                        tables.extend(load_xlsx(self.con, xlsxs))
 
                 schema_map = get_schema_map(self.con)
-                categorical_index = build_categorical_index(self.con, schema_map, max_cols_total=60, values_limit=50)
+                categorical_index = build_categorical_index(
+                    self.con,
+                    schema_map,
+                    max_cols_total=60,
+                    values_limit=50,
+                )
 
                 self.state.data_folder = folder
                 self.state.csv_files = csvs
+                self.state.xlsx_files = xlsxs
                 self.state.tables = tables
                 self.state.schema_map = schema_map
                 self.state.categorical_index = categorical_index
@@ -126,19 +116,27 @@ class Controller:
                 self.state.export_path = None
                 self.state.error = None
 
+                self.router_ctx = self._build_router_context(model=model)
+
+                self.state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": (
+                            f"Loaded folder: {folder}\n"
+                            f"Tables: {', '.join(tables) if tables else '(none)'}\n"
+                            f"CSV files: {len(csvs)}\n"
+                            f"XLSX files: {len(xlsxs)}"
+                        ),
+                    }
+                )
+
                 self._set_busy(False, None)
+
             except Exception as e:
                 self._set_busy(False, str(e))
 
         threading.Thread(target=work, daemon=True).start()
 
-<<<<<<< Updated upstream
-    def send_chat(self, user_text: str, model: str = "duckdb-nsql"):
-        """
-        Plain English -> LLM -> SQL -> validate -> execute -> preview -> export path.
-        Runs in background thread.
-        """
-=======
     def _format_debug_message(self, user_text: str, result) -> str:
         metadata = result.metadata or {}
 
@@ -241,7 +239,6 @@ class Controller:
         return "\n".join(parts)
 
     def send_chat(self, user_text: str, model: str = "duckdb-nsql"):
->>>>>>> Stashed changes
         if not self.con:
             self.state.error = "Load a folder with CSVs first."
             self.on_state_changed()
@@ -250,48 +247,43 @@ class Controller:
         def work():
             try:
                 self._set_busy(True, None)
+
                 self.state.messages.append({"role": "user", "content": user_text})
                 self.on_state_changed()
 
-                schema_text = get_schema_text(self.con)
-                cats_text = _format_categoricals_for_llm(self.state.categorical_index)
+                self.router_ctx = self._build_router_context(model=model)
+                result = route_request(user_text, self.router_ctx)
 
-                raw = nl_to_sql(
-                    model=model,
-                    schema_text=schema_text,
-                    categorical_text=cats_text,
-                    user_request=user_text,
+                self.state.generated_sql = result.sql
+                self.state.export_path = None
+                self.state.result_preview = None
+
+                if result.output_path:
+                    self.state.export_path = Path(result.output_path)
+
+                if result.dataframe is not None:
+                    df = result.dataframe
+                    self.state.result_preview = df
+
+                    out = Path("output.csv").resolve()
+                    df.to_csv(out, index=False)
+                    self.state.export_path = out
+
+                debug_message = self._format_debug_message(user_text, result)
+
+                if result.dataframe is not None:
+                    debug_message += f"\n\nExported: {self.state.export_path} ({len(result.dataframe)} rows)"
+
+                self.state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": debug_message,
+                    }
                 )
-
-                sql = sanitize_sql(strip_code_fences(raw)).strip()
-
-                if sql.strip() == "-- I_DONT_KNOW":
-                    self.state.messages.append({"role": "assistant", "content": "Model could not answer from schema. Try being more specific."})
-                    self._set_busy(False, None)
-                    return
-
-                ok, reason = is_select_only(sql)
-                if not ok:
-                    self.state.messages.append({"role": "assistant", "content": f"Blocked SQL: {reason}\n\nModel output:\n{raw}"})
-                    self._set_busy(False, None)
-                    return
-
-                # Execute
-                df = self.con.execute(sql).df()
-
-                # Export
-                out = Path("output.csv").resolve()
-                df.to_csv(out, index=False)
-
-                self.state.generated_sql = sql
-                self.state.result_preview = df
-                self.state.export_path = out
-                self.state.messages.append({"role": "assistant", "content": f"Generated SQL:\n{sql}\n\nExported: {out} ({len(df)} rows)"})
 
                 self._set_busy(False, None)
 
             except Exception as e:
-                # Always show SQL if we had it
                 msg = f"Error: {e}"
                 if self.state.generated_sql:
                     msg += f"\n\nSQL was:\n{self.state.generated_sql}"

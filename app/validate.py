@@ -14,8 +14,6 @@ DISALLOWED_SET_OPS = [
 ]
 
 
-<<<<<<< Updated upstream
-=======
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
 
@@ -26,13 +24,13 @@ def strip_ansi_and_control_chars(text: str) -> str:
     return t
 
 
->>>>>>> Stashed changes
 def strip_code_fences(text: str) -> str:
     t = text.strip()
+    t = strip_ansi_and_control_chars(t)
 
     m = re.search(r"```sql\s*(.*?)\s*```", t, flags=re.IGNORECASE | re.DOTALL)
     if m:
-        return m.group(1).strip()
+        return strip_ansi_and_control_chars(m.group(1).strip())
 
     if t.startswith("```"):
         t = re.sub(r"^```[a-zA-Z]*\n?", "", t)
@@ -43,29 +41,21 @@ def strip_code_fences(text: str) -> str:
 
     m2 = re.search(r"(?is)\b(with|select)\b.*", t)
     if m2:
-        return m2.group(0).strip()
+        return strip_ansi_and_control_chars(m2.group(0).strip())
 
-    return t
+    return strip_ansi_and_control_chars(t)
 
 
 def sanitize_sql(sql: str) -> str:
-<<<<<<< Updated upstream
-    s = sql.strip()
-
-    # Normalize whitespace
-    s = re.sub(r"[ \t]+", " ", s).strip()
-    return s
-=======
     s = strip_ansi_and_control_chars(sql).strip()
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r"\r\n?", "\n", s)
     s = re.sub(r"\n{3,}", "\n\n", s)
     return s.strip()
->>>>>>> Stashed changes
 
 
 def is_select_only(sql: str) -> tuple[bool, str]:
-    s = sql.strip()
+    s = strip_ansi_and_control_chars(sql).strip()
     if not s:
         return False, "Empty SQL."
 
@@ -84,12 +74,8 @@ def is_select_only(sql: str) -> tuple[bool, str]:
         if re.search(pat, lower):
             return False, f"Disallowed keyword detected: {pat}"
 
-<<<<<<< Updated upstream
-    return True, "OK"
-=======
     for pat in DISALLOWED_SET_OPS:
         if re.search(pat, lower):
             return False, f"Set operator not allowed for generated SQL: {pat}"
 
     return True, "OK"
->>>>>>> Stashed changes
