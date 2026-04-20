@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 import threading
-import pandas as pd
 
 from UI.state import AppState
 
 from app.db import connect, load_csvs, get_schema_map, get_schema_text, build_categorical_index
+from app.projects import add_files_to_project, create_project, get_project_file_paths, list_projects, load_project_metadata
 from app.schema_aliases import build_alias_index
 
 try:
@@ -30,6 +30,18 @@ class Controller:
         self.state.is_busy = busy
         self.state.error = error
         self.on_state_changed()
+
+    def refresh_projects(self):
+        self.state.available_projects = list_projects()
+        self.on_state_changed()
+
+    def _close_connection(self):
+        if self.con is not None:
+            try:
+                self.con.close()
+            except Exception:
+                pass
+            self.con = None
 
     def _build_router_context(self, model: str = "duckdb-nsql") -> RouterContext:
         if self.con is None:
@@ -68,72 +80,116 @@ class Controller:
             output_dir="outputs",
         )
 
-    def load_folder(self, folder: Path, model: str = "duckdb-nsql"):
+    def _load_project_into_state(self, project_dir: Path, model: str = "duckdb-nsql"):
+        metadata = load_project_metadata(project_dir)
+        file_paths = get_project_file_paths(project_dir)
+
+        csvs = sorted([p for p in file_paths if p.suffix.lower() == ".csv"])
+        xlsxs = sorted([p for p in file_paths if p.suffix.lower() == ".xlsx"])
+
+        if not csvs and not xlsxs:
+            raise RuntimeError(f"No CSV or XLSX files found in project: {metadata.get('name', project_dir.name)}")
+
+        self._close_connection()
+        self.con = connect()
+
+        tables: list[str] = []
+
+        if csvs:
+            tables.extend(load_csvs(self.con, csvs))
+
+        skipped_xlsx = False
+        if xlsxs:
+            if load_xlsx is None:
+                skipped_xlsx = True
+            else:
+                tables.extend(load_xlsx(self.con, xlsxs))
+
+        schema_map = get_schema_map(self.con)
+        categorical_index = build_categorical_index(
+            self.con,
+            schema_map,
+            max_cols_total=60,
+            values_limit=50,
+        )
+
+        self.state.data_folder = project_dir
+        self.state.csv_files = csvs
+        self.state.xlsx_files = xlsxs
+        self.state.tables = tables
+        self.state.schema_map = schema_map
+        self.state.categorical_index = categorical_index
+        self.state.generated_sql = None
+        self.state.result_preview = None
+        self.state.export_path = None
+        self.state.error = None
+
+        self.state.current_project_name = metadata.get("name", project_dir.name)
+        self.state.current_project_path = project_dir
+        self.state.current_project_created_at = metadata.get("created_at")
+
+        self.router_ctx = self._build_router_context(model=model)
+        self.state.available_projects = list_projects()
+
+        intro_lines = [
+            f"Loaded project: {self.state.current_project_name}",
+            f"Project path: {project_dir}",
+            f"Files: {len(csvs) + len(xlsxs)}",
+            f"Tables: {', '.join(tables) if tables else '(none)'}",
+            f"CSV files: {len(csvs)}",
+            f"XLSX files: {len(xlsxs)}",
+        ]
+
+        if skipped_xlsx:
+            intro_lines.append("Warning: XLSX files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.")
+
+        self.state.messages = [
+            {
+                "role": "assistant",
+                "content": "\n".join(intro_lines),
+            }
+        ]
+
+    def create_project(self, project_name: str, file_paths: list[str | Path], model: str = "duckdb-nsql"):
         def work():
             try:
                 self._set_busy(True, None)
-
-                csvs = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".csv"])
-                xlsxs = sorted([p for p in folder.iterdir() if p.suffix.lower() == ".xlsx"])
-
-                if not csvs and not xlsxs:
-                    self._set_busy(False, f"No CSV or XLSX files found in: {folder}")
-                    return
-
-                self.con = connect()
-                tables: list[str] = []
-
-                if csvs:
-                    tables.extend(load_csvs(self.con, csvs))
-
-                if xlsxs:
-                    if load_xlsx is None:
-                        self.state.messages.append(
-                            {
-                                "role": "assistant",
-                                "content": "Warning: XLSX files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.",
-                            }
-                        )
-                    else:
-                        tables.extend(load_xlsx(self.con, xlsxs))
-
-                schema_map = get_schema_map(self.con)
-                categorical_index = build_categorical_index(
-                    self.con,
-                    schema_map,
-                    max_cols_total=60,
-                    values_limit=50,
-                )
-
-                self.state.data_folder = folder
-                self.state.csv_files = csvs
-                self.state.xlsx_files = xlsxs
-                self.state.tables = tables
-                self.state.schema_map = schema_map
-                self.state.categorical_index = categorical_index
-                self.state.generated_sql = None
-                self.state.result_preview = None
-                self.state.export_path = None
-                self.state.error = None
-
-                self.router_ctx = self._build_router_context(model=model)
-
-                self.state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": (
-                            f"Loaded folder: {folder}\n"
-                            f"Tables: {', '.join(tables) if tables else '(none)'}\n"
-                            f"CSV files: {len(csvs)}\n"
-                            f"XLSX files: {len(xlsxs)}"
-                        ),
-                    }
-                )
-
+                project_dir = create_project(project_name, file_paths)
+                self._load_project_into_state(project_dir, model=model)
                 self._set_busy(False, None)
+            except Exception as exc:
+                self.state.available_projects = list_projects()
+                self._set_busy(False, str(exc))
 
-            except Exception as e:
-                self._set_busy(False, str(e))
+        threading.Thread(target=work, daemon=True).start()
+
+    def open_project(self, project_dir: str | Path, model: str = "duckdb-nsql"):
+        def work():
+            try:
+                self._set_busy(True, None)
+                self._load_project_into_state(Path(project_dir), model=model)
+                self._set_busy(False, None)
+            except Exception as exc:
+                self._set_busy(False, str(exc))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def add_files_to_current_project(self, file_paths: list[str | Path], model: str = "duckdb-nsql"):
+        if not self.state.current_project_path:
+            self.state.error = "Open or create a project first."
+            self.on_state_changed()
+            return
+
+        project_dir = self.state.current_project_path
+
+        def work():
+            try:
+                self._set_busy(True, None)
+                add_files_to_project(project_dir, file_paths)
+                self._load_project_into_state(project_dir, model=model)
+                self._set_busy(False, None)
+            except Exception as exc:
+                self._set_busy(False, str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -240,7 +296,7 @@ class Controller:
 
     def send_chat(self, user_text: str, model: str = "duckdb-nsql"):
         if not self.con:
-            self.state.error = "Load a folder with CSVs first."
+            self.state.error = "Open or create a project first."
             self.on_state_changed()
             return
 
@@ -283,11 +339,11 @@ class Controller:
 
                 self._set_busy(False, None)
 
-            except Exception as e:
-                msg = f"Error: {e}"
+            except Exception as exc:
+                msg = f"Error: {exc}"
                 if self.state.generated_sql:
                     msg += f"\n\nSQL was:\n{self.state.generated_sql}"
                 self.state.messages.append({"role": "assistant", "content": msg})
-                self._set_busy(False, str(e))
+                self._set_busy(False, str(exc))
 
         threading.Thread(target=work, daemon=True).start()
