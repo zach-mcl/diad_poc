@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk, filedialog
+from tkinter import font
 from pathlib import Path
 import pandas as pd
 import os
@@ -129,8 +130,8 @@ class ToolTip:
         label = tk.Label(
             self.tip, 
             text=self.text, 
-            bg="#ffffe0",
-            fg="black", 
+            bg="#f3d8d8",
+            fg="#1b1a1d",
             relief="solid", 
             borderwidth=1
             )
@@ -154,31 +155,71 @@ class MainPage(ttk.Frame):
         
 
     def _build_layout(self):
+
+        default_font = font.nametofont("TkDefaultFont")
+        default_font.configure(family="Courier New", size=14,)
+
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # COLOR PALETTE
+        bg_main = "#353441" #main background color 1:#572a30 2:#353441 3:#161860 4:#1f2545 5:#486b7f
+        bg_box = "#1b1a1d" #ui box color 1:#140208 2:#1b1a1d 3:#020226 4:#191e23 5:#392b35
+        fg = "#f3d8d8" #text color 1:#fcd5ac 2:#f3d8d8 3:#fffaf5 4:#ffd7d7 5:#d1bfb0
+        btn_bg = "#ef1a1a" #button color 1:#d60a40 2:#ef1a1a 3:#f96280 4:#e95050 5:#bb474f
+        btn_hover = "#ac1717" #button hover color 1:#f77e69 2:#ac1717 3:#ffba63 4:#a43838 5:#713f52
+        accent = "#b18b8b" #box border color 1:#a26d68 2:#b18b8b 3:#63abff 4:#63374a 5:#7a9c96
+
+        # FRAME
+        style.configure("Main.TFrame", background=bg_main)
+
+        # LABEL
+        style.configure("Custom.TLabel", background=bg_main, foreground=fg)
+
+        # BUTTON
+        style.configure("Custom.TButton",
+                        background=btn_bg,
+                        foreground=fg,
+                        padding=6,
+                        borderwidth=0,
+                        relief="flat")
+
+        style.map("Custom.TButton",
+          background=[("active", btn_hover)])
             
-       # SAME LAYOUT (UNCHANGED)
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=2)
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=2)
 
+        self.configure(style="Main.TFrame")
+
         # Left panel
-        self.left = ttk.Frame(self, padding=10)
+        self.left = ttk.Frame(self, padding=10, style="Main.TFrame")
         self.left.grid(row=0, column=0, sticky="nsew")
         self.left.rowconfigure(2, weight=1)
 
-        self.btn_load = ttk.Button(self.left, text="Load CSV Folder", command=self.on_load_folder)
+        self.btn_load = ttk.Button(self.left, text="Load Folder", command=self.on_load_folder, style="Custom.TButton")
         self.btn_load.grid(row=0, column=0, sticky="ew")
 
-        self.lbl_folder = ttk.Label(self.left, text="No folder loaded")
+        self.lbl_folder = ttk.Label(self.left, text="No folder loaded", style="Custom.TLabel")
         self.lbl_folder.grid(row=1, column=0, sticky="ew", pady=(8, 4))
 
         self.tables_list = tk.Listbox(self.left, height=10)
         self.tables_list.grid(row=2, column=0, sticky="nsew")
+        self.tables_list.configure(
+            bg=bg_box, 
+            fg=fg, 
+            highlightbackground=accent,  # border color
+            highlightcolor=btn_bg,       # when clicked
+            highlightthickness=2,
+            font=default_font
+            )
         #LEFT PANEL HELP ICON
         self.left_icon = tk.Label(self.tables_list, 
             text="?", 
             cursor="question_arrow", 
-            fg="white",
+            fg=btn_hover,
             bg=self.tables_list.cget("bg"),
             font=("Arial", 18, "bold"),
             padx=4,
@@ -188,20 +229,28 @@ class MainPage(ttk.Frame):
         ToolTip(self.left_icon, "Files uploaded will appear here.\nDrag and drop, or use the 'Load Folder' button to\nupload a new folder containing .csv or .xlsx files.")
 
         # Right panel
-        self.right = ttk.Frame(self, padding=10)
+        self.right = ttk.Frame(self, padding=10, style="Main.TFrame")
         self.right.grid(row=0, column=1, sticky="nsew")
         self.right.rowconfigure(0, weight=1)
         self.right.rowconfigure(1, weight=1)
         self.right.columnconfigure(0, weight=1)
         # Schema Text
-        self.schema_text = tk.Text(self.right, height=12, wrap="none")
+        self.schema_text = tk.Text(self.right, height=12, wrap="none", font=default_font)
         self.schema_text.grid(row=0, column=0, sticky="nsew")
-        self.schema_text.configure(state="disabled")
+        self.schema_text.configure(
+            state="disabled", 
+            bg=bg_box, 
+            fg=fg, 
+            insertbackground=fg,
+            highlightbackground=accent,  # border color
+            highlightcolor=btn_bg,       # when clicked
+            highlightthickness=2
+            )
         # Schema Help Icon
         self.schema_icon = tk.Label(self.schema_text, 
         text="?", 
         cursor="question_arrow", 
-        fg="white",
+        fg=btn_hover,
         bg=self.schema_text.cget("bg"),
         font=("Arial", 18, "bold"),
         padx=4,
@@ -210,14 +259,22 @@ class MainPage(ttk.Frame):
         self.schema_icon.place(relx=1.0, rely=0.0, anchor="ne")#Placing icon
         ToolTip(self.schema_icon, "Schema data will appear in this box.")
         # Categories Text
-        self.cats_text = tk.Text(self.right, height=10, wrap="none")
+        self.cats_text = tk.Text(self.right, height=10, wrap="none", font=default_font)
         self.cats_text.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
-        self.cats_text.configure(state="disabled")
+        self.cats_text.configure(
+            state="disabled", 
+            bg=bg_box, 
+            fg=fg, 
+            insertbackground=fg,
+            highlightbackground=accent,  # border color
+            highlightcolor=btn_bg,       # when clicked
+            highlightthickness=2
+            )
         # Categories Help Icon
         self.cats_icon = tk.Label(self.cats_text, 
         text="?", 
         cursor="question_arrow", 
-        fg="white",
+        fg=btn_hover,
         bg=self.cats_text.cget("bg"),
         font=("Arial", 18, "bold"),
         padx=4,
@@ -227,20 +284,28 @@ class MainPage(ttk.Frame):
         ToolTip(self.cats_icon, "Categorical data will appear in this box.")
 
         # Bottom panel
-        self.bottom = ttk.Frame(self, padding=10)
+        self.bottom = ttk.Frame(self, padding=10, style="Main.TFrame")
         self.bottom.grid(row=1, column=0, columnspan=2, sticky="nsew")
         self.bottom.rowconfigure(0, weight=2)
         self.bottom.rowconfigure(2, weight=2)
         self.bottom.columnconfigure(0, weight=1)
 
-        self.chat_history = tk.Text(self.bottom, height=10, wrap="word")
+        self.chat_history = tk.Text(self.bottom, height=10, wrap="word", font=default_font)
         self.chat_history.grid(row=0, column=0, sticky="nsew")
-        self.chat_history.configure(state="disabled")
+        self.chat_history.configure(
+            state="disabled", 
+            bg=bg_box, 
+            fg=fg, 
+            insertbackground=fg,
+            highlightbackground=accent,  # border color
+            highlightcolor=btn_bg,       # when clicked
+            highlightthickness=2
+            )
         #CHAT HISTORY HELP ICON
         self.chat_icon = tk.Label(
             self.chat_history,
             text="?",
-            fg="white",
+            fg=btn_hover,
             bg=self.chat_history.cget("bg"),
             font=("Arial", 18, "bold"),
             cursor="question_arrow",
@@ -251,25 +316,47 @@ class MainPage(ttk.Frame):
         self.chat_icon.place(relx=1.0, rely=0.0, anchor="ne", x=-6, y=6) #Placing icon
         ToolTip(self.chat_icon, "Your prompt, chat history, resulting SQL query,\nand output file will appear in this box.\nDouble check the SQL logic!")
 
-        entry_row = ttk.Frame(self.bottom)
-        entry_row.grid(row=1, column=0, sticky="ew", pady=(8, 8))
+        entry_row = tk.Frame(self.bottom, bg=bg_main)
+        entry_row.grid(row=1, column=0, sticky="ew", pady=4)
         entry_row.columnconfigure(0, weight=1)
 
-        self.chat_entry = ttk.Entry(entry_row)
+        self.chat_entry = tk.Entry(entry_row,
+            bg=bg_box,
+            fg=fg,
+            insertbackground=fg,
+            font=default_font,
+            relief="flat",
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=accent,   
+            highlightcolor=btn_bg      
+        )
+        self.chat_entry.configure(
+            background=bg_box,
+            foreground=fg
+        )
         self.chat_entry.grid(row=0, column=0, sticky="ew")
         self.chat_entry.bind("<Return>", lambda e: self.on_send())
 
-        self.btn_send = ttk.Button(entry_row, text="Send", command=self.on_send)
+        self.btn_send = ttk.Button(entry_row, text="Send", command=self.on_send, style="Custom.TButton")
         self.btn_send.grid(row=0, column=1, padx=(8, 0))
 
-        self.results_text = tk.Text(self.bottom, height=10, wrap="none")
+        self.results_text = tk.Text(self.bottom, height=10, wrap="none", font=default_font)
         self.results_text.grid(row=2, column=0, sticky="nsew")
-        self.results_text.configure(state="disabled")
+        self.results_text.configure(
+            state="disabled", 
+            bg=bg_box, 
+            fg=fg, 
+            insertbackground=fg,
+            highlightbackground=accent,  # border color
+            highlightcolor=btn_bg,       # when clicked
+            highlightthickness=2
+            )
         #RESULTS HELP LABEL
         self.results_icon = tk.Label(
             self.results_text,
             text="?",
-            fg="white",
+            fg=btn_hover,
             bg=self.results_text.cget("bg"),
             font=("Arial", 18, "bold"),
             cursor="question_arrow",
@@ -280,7 +367,7 @@ class MainPage(ttk.Frame):
         self.results_icon.place(relx=1.0, rely=0.0, anchor="ne", x=-6, y=6)#Placing icon
         ToolTip(self.results_icon, "Data results will appear in this box after loading.\nCheck your loading status in the bottom left of the UI!")
 
-        self.status = ttk.Label(self, text="", anchor="w")
+        self.status = ttk.Label(self, text="", anchor="w", style="Custom.TLabel")
         self.status.grid(row=2, column=0, columnspan=2, sticky="ew")
 
         self.left.drop_target_register(DND_FILES)
