@@ -1,0 +1,150 @@
+#!/bin/bash
+
+
+
+
+install_directory="/Applications/.diad"
+venv_directory="$install_directory/venv"
+log_file="$install_directory/install.log"
+
+user="${USER}"
+if [ "$user" = "root" ]; then
+    user=$(stat -f "%Su" /dev/console || echo "$SUDO_USER")
+fi
+
+user_home=$(eval echo "~$user")
+
+log(){
+    echo "$1" | tee -a "$log_file"
+}
+
+user_run(){
+    sudo -u "$user" "$@"
+}
+
+echo "Installing user: $user"
+echo "Install Directory:: $install_directory"
+#Defines install directory, checks who the user is and makes it so that the script can run commands as user ^
+
+echo "Checking if Homebrew is installed"
+homebrew=""
+if user_run bash -c 'command -v brew'; then
+    homebrew=$(user_run bash -c 'command -v brew')
+    echo "Homebrew found at $homebrew"
+elif [ -f "/opt/homebrew/bin/brew" ]; then
+    homebrew="/opt/homebrew/bin/brew"
+    echo "Homebrew found at $homebrew"
+elif [ -f "/usr/local/bin/brew" ]; then
+    homebrew="/usr/local/bin/brew"
+    echo "Homebrew found at $homebrew"
+else
+    echo "Homebrew not found, installing"
+    user_run /bin/bash -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    if [ -f "/opt/homebrew/bin/brew" ]; then
+        homebrew="/opt/homebrew/bin/brew"
+        echo "Homebrew found at $homebrew"
+    elif [ -f "/usr/local/bin/brew" ]; then
+        homebrew="/usr/local/bin/brew"
+        echo "Homebrew found at $homebrew"
+    fi
+    echo "Homebrew installed at $homebrew"
+fi
+
+if [ -z "$homebrew" ]; then
+    echo "Could not find homebrew or install"
+    exit 1
+fi
+#Homebrew installer for python check - looks for homebrew to see if it is alrdy installed, if not installs it ^
+
+echo "Checking for Python version 3.12 (note 3.12 is necessary for application)"
+python_install=""
+if user_run "$homebrew" list python@3.12; then
+    python_install=$("$homebrew" --prefix python@3.12)/bin/python3.12
+    echo "Python 3.12 found at $python_install"
+else
+    echo "Installing Python 3.12"
+    user_run "$homebrew" install python@3.12
+    python_install=$("$homebrew" --prefix python@3.12)/bin/python3.12
+    echo "Python 3.12 installed at $python_install"
+fi
+
+if [ ! -f "$python_install" ]; then
+    echo "Error: Python could not be found at $python_install"
+    exit 1
+fi
+user_run "$homebrew" install python-tk@3.12
+
+#checks for python 3.12 install specifically - version specific for tkinterdnd2 ^
+
+echo "Checking for Ollama"
+if user_run bash -c 'command -v ollama'; then
+    echo "Ollama already installed"
+elif [ -f "/usr/local/bin/ollama" ]; then
+    echo "Ollama already installed"
+else
+    echo "installing Ollama"
+    user_run bash -c 'curl -fsSL https://ollama.com/install.sh | sh'
+    echo "Ollama installed"
+
+fi
+#checks for ollama and installs it if needed
+
+chown -R "$user:staff" "$install_directory"
+
+echo "creating virtual environment at $venv_directory"
+user_run "$python_install" -m venv "$venv_directory"
+echo "updating python installer and installing dependencies"
+user_run "$venv_directory/bin/pip" install --upgrade pip
+user_run "$venv_directory/bin/pip" install -r "$install_directory/requirements.txt"
+
+echo "Dependencies installed"
+#creates a venv to install dependencies in requirements .txt
+
+echo "installing tcl9 tkdnd"
+tkdnd_target="$venv_directory/lib/python3.12/site-packages/tkinterdnd2/tkdnd/osx-arm64"
+cp "$install_directory/tkdnd_tcl9/libtkdnd2.9.5.dylib" "$tkdnd_target/"
+cp "$install_directory/tkdnd_tcl9/"*.tcl "$tkdnd_target/"
+echo "tkdnd library installed"
+
+#tkinter from homebrew is natively tcl8, which does not work with our 3.12 python, so this pulls the newest version with tcl9 support
+
+echo "Starting Ollama"
+if ! curl -s http://localhost:11434/api/tags; then
+    user_run ollama serve &
+    ollamaPID=$!
+    sleep 5
+    echo "Ollama service started"
+fi
+
+echo "pulling duckdb-nsql model (could take some time)"
+user_run ollama pull duckdb-nsql || {
+    echo "could not pull model, user can run 'ollama pull duckdb-nsql' at a later time"
+}
+
+if [ -n "$ollamaPID" ]; then
+    kill $ollamaPID || true
+fi
+#Opens ollama in the back, pulls duckdb model, then closes it ^
+
+if [ ! -d "$install_directory/DIAD.app" ]; then
+    mkdir -p "$install_directory/DIAD.app.Contents/MacOS"
+    mkdir -p "$install_directory/DIAD.app/Contents/Resources"
+    cp "$install_directory/diadlauncher" "$install_directory/DIAD.app/Contents/MacOS/diadlauncher"
+    cp "$install_directory/Info.plist" "$install_directory/DIAD.app/Contents/Info.plist"
+fi
+#hopefully will get around .app issue ^
+
+echo "Setting Permissions"
+chown -R "$user:staff" "$install_directory"
+chmod -R 755 "$install_directory"
+chmod +x "$install_directory/DIAD.app/Contents/MacOS/diadlauncher"
+echo "DIAD Installation complete, you can now launch DIAD from /Applications/DIAD/DIAD.app"
+
+ln -sf "/Applications/.diad/DIAD.app" "/Applications/DIAD.app"
+#creates DIAD as an app
+exit 0
+
+
+
+
+    

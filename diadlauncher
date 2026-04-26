@@ -1,0 +1,31 @@
+#!/bin/bash
+
+install_directory="/Applications/.diad"
+venv_directory="$install_directory/venv"
+
+if [ ! -f "$venv_directory/bin/python" ]; then
+    osascript -e 'display alert "DIAD ERROR" message " Python environment not found. Please Reinstall DIAD" as critical'
+    exit 1
+fi
+#checks for venv
+if ! curl -s http://localhost:11434/api/tags; then
+    echo "Ollama is not running, starting"
+
+    if [ -d "/Applications/Ollama.app" ]; then
+        open -a Ollama
+        sleep 5
+    elif command -v ollama; then
+        ollama serve &
+        sleep 5
+    else
+        osascript -e 'display alert "Warning" message "Ollama is not installed or not running, app will open but queries will fail, please install ollama from ollama.com" as warning'
+    fi
+fi
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+#checks for ollama
+echo "Starting DIAD"
+cd "$install_directory"
+exec "$venv_directory/bin/python" "$install_directory/run_ui.py"
+#starts DIAD

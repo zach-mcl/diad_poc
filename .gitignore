@@ -5,3 +5,5 @@ output.csv
 /diad/bin
 /diad/lib
 /diad
+/dist
+/pkg_build
