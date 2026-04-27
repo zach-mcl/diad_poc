@@ -1,0 +1,162 @@
+[
+  {
+    "employee_id": "E1000",
+    "full_name": "Alice Chen",
+    "email": "alice.chen@acme.com",
+    "department": "Operations",
+    "onboard_date": "2023-02-01",
+    "work_mode": "In-Office"
+  },
+  {
+    "employee_id": "E1001",
+    "full_name": "Bob Patel",
+    "email": "bob.patel@acme.com",
+    "department": "Operations",
+    "onboard_date": "2019-04-05",
+    "work_mode": "Remote"
+  },
+  {
+    "employee_id": "E1002",
+    "full_name": "Carlos Garcia",
+    "email": "carlos.garcia@acme.com",
+    "department": "Engineering",
+    "onboard_date": "2023-12-18",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1003",
+    "full_name": "Diana Kim",
+    "email": "diana.kim@acme.com",
+    "department": "Engineering",
+    "onboard_date": "2021-01-01",
+    "work_mode": "Remote"
+  },
+  {
+    "employee_id": "E1004",
+    "full_name": "Ethan Smith",
+    "email": "ethan.smith@acme.com",
+    "department": "Engineering",
+    "onboard_date": "2019-09-20",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1005",
+    "full_name": "Fatima Hassan",
+    "email": "fatima.hassan@acme.com",
+    "department": "Operations",
+    "onboard_date": "2019-12-21",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1006",
+    "full_name": "George Johnson",
+    "email": "george.johnson@acme.com",
+    "department": "Finance",
+    "onboard_date": "2021-04-15",
+    "work_mode": "In-Office"
+  },
+  {
+    "employee_id": "E1007",
+    "full_name": "Hannah Lee",
+    "email": "hannah.lee@acme.com",
+    "department": "Sales",
+    "onboard_date": "2024-01-25",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1008",
+    "full_name": "Ian Brown",
+    "email": "ian.brown@acme.com",
+    "department": "Sales",
+    "onboard_date": "2021-06-09",
+    "work_mode": "Remote"
+  },
+  {
+    "employee_id": "E1009",
+    "full_name": "Julia Nguyen",
+    "email": "julia.nguyen@acme.com",
+    "department": "Engineering",
+    "onboard_date": "2024-06-04",
+    "work_mode": "In-Office"
+  },
+  {
+    "employee_id": "E1010",
+    "full_name": "Kenji Tanaka",
+    "email": "kenji.tanaka@acme.com",
+    "department": "Marketing",
+    "onboard_date": "2018-06-28",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1011",
+    "full_name": "Lara Williams",
+    "email": "lara.williams@acme.com",
+    "department": "HR",
+    "onboard_date": "2020-01-24",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1012",
+    "full_name": "Marcus Davis",
+    "email": "marcus.davis@acme.com",
+    "department": "Finance",
+    "onboard_date": "2018-07-03",
+    "work_mode": "In-Office"
+  },
+  {
+    "employee_id": "E1013",
+    "full_name": "Nadia Lopez",
+    "email": "nadia.lopez@acme.com",
+    "department": "Marketing",
+    "onboard_date": "2024-11-20",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1014",
+    "full_name": "Omar Khan",
+    "email": "omar.khan@acme.com",
+    "department": "Engineering",
+    "onboard_date": "2019-12-03",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1015",
+    "full_name": "Priya Sharma",
+    "email": "priya.sharma@acme.com",
+    "department": "Sales",
+    "onboard_date": "2019-05-03",
+    "work_mode": "Remote"
+  },
+  {
+    "employee_id": "E1016",
+    "full_name": "Quinn Walsh",
+    "email": "quinn.walsh@acme.com",
+    "department": "Operations",
+    "onboard_date": "2021-05-15",
+    "work_mode": "In-Office"
+  },
+  {
+    "employee_id": "E1017",
+    "full_name": "Rachel Martinez",
+    "email": "rachel.martinez@acme.com",
+    "department": "Sales",
+    "onboard_date": "2019-06-12",
+    "work_mode": "Hybrid"
+  },
+  {
+    "employee_id": "E1018",
+    "full_name": "Samuel Anderson",
+    "email": "samuel.anderson@acme.com",
+    "department": "Operations",
+    "onboard_date": "2020-12-22",
+    "work_mode": "Remote"
+  },
+  {
+    "employee_id": "E1019",
+    "full_name": "Tara Singh",
+    "email": "tara.singh@acme.com",
+    "department": "Finance",
+    "onboard_date": "2022-11-06",
+    "work_mode": "Hybrid"
+  }
+]

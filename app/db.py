@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+
 import duckdb
-import pandas as pd #need to import pandas for read_excel function -jm
+import pandas as pd
 
 
 # ----------------------------
-# Loading CSVs into DuckDB
+# Loading data files into DuckDB
 # ----------------------------
 
 def _safe_table_name(filename: str) -> str:
@@ -21,6 +22,38 @@ def _safe_table_name(filename: str) -> str:
     return base
 
 
+def _dedupe_table_name(base_name: str, used_names: set[str]) -> str:
+    name = base_name
+    counter = 2
+    while name in used_names:
+        name = f"{base_name}_{counter}"
+        counter += 1
+    used_names.add(name)
+    return name
+
+
+def _clean_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
+    cleaned: list[str] = []
+    seen: dict[str, int] = {}
+
+    for column in df.columns:
+        name = str(column).strip().lower()
+        name = re.sub(r"[^a-z0-9_]+", "_", name).strip("_")
+        if not name:
+            name = "column"
+
+        count = seen.get(name, 0)
+        seen[name] = count + 1
+        if count:
+            name = f"{name}_{count + 1}"
+
+        cleaned.append(name)
+
+    df = df.copy()
+    df.columns = cleaned
+    return df
+
+
 def connect(db_path: Path | None = None) -> duckdb.DuckDBPyConnection:
     if db_path is None:
         return duckdb.connect(database=":memory:")
@@ -29,8 +62,10 @@ def connect(db_path: Path | None = None) -> duckdb.DuckDBPyConnection:
 
 def load_csvs(con: duckdb.DuckDBPyConnection, csv_paths: list[Path]) -> list[str]:
     table_names: list[str] = []
+    used_names: set[str] = set()
+
     for p in csv_paths:
-        t = _safe_table_name(p.name)
+        t = _dedupe_table_name(_safe_table_name(p.name), used_names)
         con.execute(
             f"""
             CREATE OR REPLACE TABLE "{t}" AS
@@ -39,17 +74,25 @@ def load_csvs(con: duckdb.DuckDBPyConnection, csv_paths: list[Path]) -> list[str
             [str(p)],
         )
         table_names.append(t)
+
     return table_names
 
-#load xlsx files function -jm
+
 def load_xlsx(con: duckdb.DuckDBPyConnection, xlsx_paths: list[Path]) -> list[str]:
     table_names: list[str] = []
+    used_names: set[str] = set()
+
     for p in xlsx_paths:
-        t = _safe_table_name(p.name)
+        t = _dedupe_table_name(_safe_table_name(p.name), used_names)
         df = pd.read_excel(p)
-        df.columns = [re.sub(r"[^a-z0-9_]+", "_", columns.strip().lower()).strip("_") for columns in df.columns]
-        con.execute(f'CREATE OR REPLACE TABLE "{t}" AS SELECT * FROM df')
+        df = _clean_dataframe_columns(df)
+        con.register("_xlsx_df", df)
+        try:
+            con.execute(f'CREATE OR REPLACE TABLE "{t}" AS SELECT * FROM _xlsx_df')
+        finally:
+            con.unregister("_xlsx_df")
         table_names.append(t)
+
     return table_names
 
 def load_json(con: duckdb.DuckDBPyConnection, json_paths: list[Path]) -> list[str]:
@@ -64,8 +107,25 @@ def load_json(con: duckdb.DuckDBPyConnection, json_paths: list[Path]) -> list[st
 
 
 
+def load_json(con: duckdb.DuckDBPyConnection, json_paths: list[Path]) -> list[str]:
+    table_names: list[str] = []
+    used_names: set[str] = set()
 
+    for p in json_paths:
+        t = _dedupe_table_name(_safe_table_name(p.name), used_names)
+        try:
+            con.execute(
+                f"""
+                CREATE OR REPLACE TABLE "{t}" AS
+                SELECT * FROM read_json_auto(?);
+                """,
+                [str(p)],
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Could not load JSON file {p.name}: {exc}") from exc
+        table_names.append(t)
 
+    return table_names
 
 
 # ----------------------------
@@ -91,7 +151,8 @@ def get_schema_text(con: duckdb.DuckDBPyConnection) -> str:
         if t != cur:
             cur = t
             out.append(f"\nTABLE {t}:")
-        out.append(f"  - {c} ({dt})")
+        out.append(f" - {c} ({dt})")
+
     return "\n".join(out).strip()
 
 
@@ -101,6 +162,7 @@ def get_schema_map(con: duckdb.DuckDBPyConnection) -> dict[str, dict[str, str]]:
         SELECT table_name, column_name, data_type
         FROM information_schema.columns
         WHERE table_schema='main'
+        ORDER BY table_name, ordinal_position;
         """
     ).fetchall()
 
@@ -126,33 +188,36 @@ class ColumnProfile:
 
 
 def profile_column(con: duckdb.DuckDBPyConnection, table: str, column: str) -> ColumnProfile:
-    q = f'''
-    SELECT
-      COUNT(*) AS rows,
-      COUNT(DISTINCT "{column}") AS distinct_vals,
-      SUM(CASE WHEN "{column}" IS NULL THEN 1 ELSE 0 END) AS nulls,
-      AVG(CASE WHEN typeof("{column}")='VARCHAR' THEN length("{column}") ELSE NULL END) AS avg_len
-    FROM "{table}"
-    '''
+    q = f"""
+        SELECT
+          COUNT(*) AS rows,
+          COUNT(DISTINCT "{column}") AS distinct_vals,
+          SUM(CASE WHEN "{column}" IS NULL THEN 1 ELSE 0 END) AS nulls,
+          AVG(CASE WHEN typeof("{column}")='VARCHAR' THEN length("{column}") ELSE NULL END) AS avg_len
+        FROM "{table}"
+    """
     rows, distinct_vals, nulls, avg_len = con.execute(q).fetchone()
 
     dtype_row = con.execute(
         """
         SELECT data_type
         FROM information_schema.columns
-        WHERE table_schema='main' AND table_name=? AND column_name=?
+        WHERE table_schema='main'
+          AND table_name=?
+          AND column_name=?
         """,
         [table, column],
     ).fetchone()
+
     dtype = dtype_row[0] if dtype_row else "UNKNOWN"
 
     return ColumnProfile(
         table=table,
         column=column,
         dtype=dtype,
-        rows=int(rows),
-        distinct=int(distinct_vals),
-        nulls=int(nulls),
+        rows=int(rows or 0),
+        distinct=int(distinct_vals or 0),
+        nulls=int(nulls or 0),
         avg_len=float(avg_len) if avg_len is not None else None,
     )
 
@@ -180,15 +245,13 @@ def detect_categorical_columns_dynamic(
             if p.rows <= 0:
                 continue
 
-            # skip key-like columns (almost all unique)
             if p.distinct >= int(0.95 * p.rows):
                 continue
 
             ratio = p.distinct / max(p.rows, 1)
             is_small_table = p.rows <= small_table_rows
-
-            ok_normal = (p.distinct <= max_distinct and ratio <= max_ratio)
-            ok_small = (is_small_table and p.distinct <= small_table_max_distinct)
+            ok_normal = p.distinct <= max_distinct and ratio <= max_ratio
+            ok_small = is_small_table and p.distinct <= small_table_max_distinct
 
             if ok_normal or ok_small:
                 if p.avg_len is not None and p.avg_len > max_avg_len:
@@ -214,13 +277,14 @@ def get_unique_values_safe(
 
     limit = max(1, min(int(limit), 200))
 
-    q = f'''
-    SELECT DISTINCT "{column}" AS v
-    FROM "{table}"
-    WHERE "{column}" IS NOT NULL
-    ORDER BY v
-    LIMIT {limit}
-    '''
+    q = f"""
+        SELECT DISTINCT "{column}" AS v
+        FROM "{table}"
+        WHERE "{column}" IS NOT NULL
+        ORDER BY v
+        LIMIT {limit}
+    """
+
     rows = con.execute(q).fetchall()
     return [str(r[0]) for r in rows]
 
@@ -246,6 +310,7 @@ def build_categorical_index(
             continue
         if vals:
             idx[(p.table, p.column)] = vals
+
     return idx
 
 
@@ -276,12 +341,12 @@ def find_join_candidates(
     right_candidates = [c for c, dt in right_cols.items() if _is_string_type(dt)]
 
     def sample_values(table: str, col: str) -> set[str]:
-        q = f'''
-        SELECT DISTINCT lower(trim("{col}")) AS v
-        FROM "{table}"
-        WHERE "{col}" IS NOT NULL
-        LIMIT {sample_limit}
-        '''
+        q = f"""
+            SELECT DISTINCT lower(trim("{col}")) AS v
+            FROM "{table}"
+            WHERE "{col}" IS NOT NULL
+            LIMIT {sample_limit}
+        """
         return {r[0] for r in con.execute(q).fetchall() if r[0]}
 
     left_samples: dict[str, set[str]] = {}
@@ -296,15 +361,18 @@ def find_join_candidates(
             rset = sample_values(right_table, rc)
         except Exception:
             continue
+
         if not rset:
             continue
 
         for lc, lset in left_samples.items():
             if not lset:
                 continue
+
             inter = len(lset & rset)
             union = len(lset | rset)
             score = inter / union if union else 0.0
+
             if score >= min_overlap:
                 results.append((lc, rc, score))
 

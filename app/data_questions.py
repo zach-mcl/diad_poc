@@ -6,8 +6,30 @@ from typing import Optional
 from .router_types import RouteName, RouterContext, RouterResult
 
 
+_TABLE_STOPWORDS = {
+    "test",
+    "export",
+    "sheet",
+    "sheet1",
+    "sheet2",
+    "sheet3",
+    "table",
+    "data",
+}
+
+
 def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
+    return re.sub(r"\s+", " ", str(text or "").strip().lower())
+
+
+def _contains_exact_term(text: str, term: str) -> bool:
+    if not term:
+        return False
+
+    return re.search(
+        rf"(?<!\w){re.escape(term.lower())}(?!\w)",
+        text.lower(),
+    ) is not None
 
 
 def _table_names(schema_map: dict[str, dict[str, str]]) -> list[str]:
@@ -18,19 +40,115 @@ def _column_names(schema_map: dict[str, dict[str, str]], table_name: str) -> lis
     return sorted(schema_map.get(table_name, {}).keys())
 
 
-def _match_table_name(query: str, schema_map: dict[str, dict[str, str]]) -> Optional[str]:
+def _table_keywords(table_name: str) -> list[str]:
+    tokens = re.split(r"[^a-zA-Z0-9]+", table_name.lower())
+    out: list[str] = []
+
+    for token in tokens:
+        if token and token not in _TABLE_STOPWORDS and token not in out:
+            out.append(token)
+
+    return out
+
+
+def _is_table_list_request(normalized_query: str) -> bool:
+    patterns = [
+        r"\bshow\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?tables?(?:\s+(?:i|we)\s+(?:uploaded|loaded))?\b",
+        r"\bshow\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?(?:uploaded|loaded)\s+tables?\b",
+        r"\blist\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?tables?(?:\s+(?:i|we)\s+(?:uploaded|loaded))?\b",
+        r"\blist\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?(?:uploaded|loaded)\s+tables?\b",
+        r"\bwhat\s+(?:are\s+)?(?:all\s+)?(?:the\s+)?tables?(?:\s+(?:i|we)\s+(?:uploaded|loaded))?\b",
+        r"\bwhat\s+(?:tables?|files?)\s+(?:are\s+)?(?:loaded|uploaded)\b",
+        r"\bwhich\s+(?:tables?|files?)\s+(?:are\s+)?(?:loaded|uploaded)\b",
+        r"\bwhich\s+tables?\b",
+        r"\btable\s+names?\b",
+        r"\bwhat\s+(?:data|files?)\s+(?:is|are)\s+(?:loaded|uploaded)\b",
+        r"\bwhat is loaded\b",
+        r"\bloaded\s+(?:data|files?|tables?)\b",
+        r"\buploaded\s+(?:data|files?|tables?)\b",
+        r"\bsummarize loaded data\b",
+    ]
+
+    return any(re.search(pattern, normalized_query) for pattern in patterns)
+
+
+def _is_schema_or_column_request(normalized_query: str) -> bool:
+    return any(
+        word in normalized_query
+        for word in [
+            "schema",
+            "columns",
+            "column",
+            "fields",
+            "field",
+            "headers",
+            "header",
+        ]
+    )
+
+
+def _is_value_request(normalized_query: str) -> bool:
+    return any(
+        phrase in normalized_query
+        for phrase in [
+            "possible values",
+            "distinct values",
+            "what values",
+            "allowed values",
+            "categorical values",
+        ]
+    )
+
+
+def _score_table_match(query: str, table_name: str) -> int:
+    normalized_query = _normalize(query)
+    score = 0
+
+    if _contains_exact_term(normalized_query, table_name.lower()):
+        score += 10
+
+    for token in _table_keywords(table_name):
+        if _contains_exact_term(normalized_query, token):
+            if token in {"notion", "okta"}:
+                score += 5
+            else:
+                score += 3
+
+    return score
+
+
+def _match_table_names(query: str, schema_map: dict[str, dict[str, str]]) -> list[str]:
     normalized_query = _normalize(query)
 
     explicit = re.search(r"\btable\s+([A-Za-z_][A-Za-z0-9_]*)\b", normalized_query)
     if explicit:
         candidate = explicit.group(1)
+
         for table_name in schema_map.keys():
             if table_name.lower() == candidate.lower():
-                return table_name
+                return [table_name]
+
+    scored: list[tuple[str, int]] = []
 
     for table_name in schema_map.keys():
-        if re.search(rf"\b{re.escape(table_name.lower())}\b", normalized_query):
-            return table_name
+        score = _score_table_match(normalized_query, table_name)
+        if score > 0:
+            scored.append((table_name, score))
+
+    scored.sort(key=lambda x: (-x[1], x[0].lower()))
+
+    if not scored:
+        return []
+
+    best_score = scored[0][1]
+    return [table_name for table_name, score in scored if score == best_score]
+
+
+def _match_table_name(query: str, schema_map: dict[str, dict[str, str]]) -> Optional[str]:
+    matches = _match_table_names(query, schema_map)
+
+    if len(matches) == 1:
+        return matches[0]
 
     return None
 
@@ -41,12 +159,15 @@ def _match_column_name(
     preferred_table: str | None = None,
 ) -> tuple[str | None, str | None]:
     explicit = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)", query)
+
     if explicit:
         raw_table = explicit.group(1)
         raw_col = explicit.group(2)
+
         for table_name, cols in schema_map.items():
             if table_name.lower() != raw_table.lower():
                 continue
+
             for col_name in cols.keys():
                 if col_name.lower() == raw_col.lower():
                     return table_name, col_name
@@ -55,13 +176,14 @@ def _match_column_name(
 
     if preferred_table:
         for col_name in schema_map.get(preferred_table, {}).keys():
-            if re.search(rf"\b{re.escape(col_name.lower())}\b", normalized_query):
+            if _contains_exact_term(normalized_query, col_name.lower()):
                 return preferred_table, col_name
 
     matches: list[tuple[str, str]] = []
+
     for table_name, cols in schema_map.items():
         for col_name in cols.keys():
-            if re.search(rf"\b{re.escape(col_name.lower())}\b", normalized_query):
+            if _contains_exact_term(normalized_query, col_name.lower()):
                 matches.append((table_name, col_name))
 
     if len(matches) == 1:
@@ -80,6 +202,7 @@ def _categorical_values(
     for (table_key, col_key), vals in categorical_index.items():
         if col_key.lower() != column_name.lower():
             continue
+
         if table_name is not None and table_key.lower() != table_name.lower():
             continue
 
@@ -90,17 +213,20 @@ def _categorical_values(
 
     deduped: list[str] = []
     seen: set[str] = set()
+
     for value in values:
         lowered = value.lower()
         if lowered not in seen:
             seen.add(lowered)
             deduped.append(value)
+
     return deduped
 
 
 def _preview_values(values: list[str], limit: int = 20) -> str:
     if not values:
         return "(none found)"
+
     preview = values[:limit]
     suffix = "" if len(values) <= limit else f" ... ({len(values)} total)"
     return ", ".join(preview) + suffix
@@ -112,6 +238,7 @@ def _find_related_tables(keyword: str, schema_map: dict[str, dict[str, str]]) ->
 
     for table_name, cols in schema_map.items():
         score = 0
+
         if keyword in table_name.lower():
             score += 5
 
@@ -130,10 +257,12 @@ def _find_related_tables(keyword: str, schema_map: dict[str, dict[str, str]]) ->
 
 def _summarize_loaded_data(ctx: RouterContext) -> str:
     tables = _table_names(ctx.schema_map)
+
     if not tables:
         return "No tables are currently loaded."
 
     lines = [f"{len(tables)} table(s) loaded:"]
+
     for table_name in tables:
         col_count = len(ctx.schema_map.get(table_name, {}))
         lines.append(f"- {table_name} ({col_count} columns)")
@@ -141,8 +270,32 @@ def _summarize_loaded_data(ctx: RouterContext) -> str:
     if ctx.source_files:
         lines.append("")
         lines.append("Loaded source files:")
+
         for path in ctx.source_files:
             lines.append(f"- {path}")
+
+    return "\n".join(lines)
+
+
+def _format_columns_for_tables(
+    schema_map: dict[str, dict[str, str]],
+    table_names: list[str],
+) -> str:
+    if not table_names:
+        return "No matching tables found."
+
+    lines = ["Columns by table:"]
+
+    for table_name in table_names:
+        columns = _column_names(schema_map, table_name)
+        lines.append("")
+        lines.append(f"{table_name}:")
+
+        if columns:
+            for column in columns:
+                lines.append(f"- {column}")
+        else:
+            lines.append("- (no columns found)")
 
     return "\n".join(lines)
 
@@ -150,20 +303,9 @@ def _summarize_loaded_data(ctx: RouterContext) -> str:
 def answer_data_question(user_request: str, ctx: RouterContext) -> RouterResult:
     normalized_query = _normalize(user_request)
 
-    if any(
-        phrase in normalized_query
-        for phrase in [
-            "what tables",
-            "which tables",
-            "list tables",
-            "show tables",
-            "what is loaded",
-            "what data is loaded",
-            "loaded data",
-            "schema",
-            "summarize loaded data",
-        ]
-    ):
+    # Keep these table-list requests in the metadata path. This must run before
+    # any broad action-word logic because "show all tables" is metadata, not rows.
+    if _is_table_list_request(normalized_query):
         return RouterResult(
             route=RouteName.DATA_QUESTION,
             ok=True,
@@ -172,22 +314,26 @@ def answer_data_question(user_request: str, ctx: RouterContext) -> RouterResult:
             metadata={"table_count": len(ctx.schema_map)},
         ).with_query(user_request)
 
-    if "columns" in normalized_query or "fields" in normalized_query or "column" in normalized_query:
-        table_name = _match_table_name(user_request, ctx.schema_map)
-        if table_name:
-            columns = _column_names(ctx.schema_map, table_name)
-            if columns:
-                return RouterResult(
-                    route=RouteName.DATA_QUESTION,
-                    ok=True,
-                    message=f'Columns in "{table_name}":\n- ' + "\n- ".join(columns),
-                    reason="Answered with schema_map column names.",
-                    metadata={"table": table_name, "column_count": len(columns)},
-                ).with_query(user_request)
+    if _is_schema_or_column_request(normalized_query):
+        matched_tables = _match_table_names(user_request, ctx.schema_map)
+
+        if matched_tables:
+            return RouterResult(
+                route=RouteName.DATA_QUESTION,
+                ok=True,
+                message=_format_columns_for_tables(ctx.schema_map, matched_tables),
+                reason="Answered with schema_map column names.",
+                metadata={
+                    "tables": matched_tables,
+                    "table_count": len(matched_tables),
+                },
+            ).with_query(user_request)
 
         table_name, column_name = _match_column_name(user_request, ctx.schema_map)
+
         if table_name and column_name:
             values = _categorical_values(ctx.categorical_index, table_name, column_name)
+
             return RouterResult(
                 route=RouteName.DATA_QUESTION,
                 ok=True,
@@ -201,27 +347,20 @@ def answer_data_question(user_request: str, ctx: RouterContext) -> RouterResult:
 
         return RouterResult(
             route=RouteName.DATA_QUESTION,
-            ok=False,
-            message="I could not confidently match that table or column. Try using an exact table name or table.column.",
-            reason="This looked like a metadata question, but the target was ambiguous.",
+            ok=True,
+            message=_format_columns_for_tables(ctx.schema_map, _table_names(ctx.schema_map)),
+            reason="Answered with all loaded schema_map column names.",
+            metadata={"table_count": len(ctx.schema_map)},
         ).with_query(user_request)
 
-    if any(
-        phrase in normalized_query
-        for phrase in [
-            "possible values",
-            "distinct values",
-            "what values",
-            "allowed values",
-            "categorical values",
-        ]
-    ):
+    if _is_value_request(normalized_query):
         preferred_table = _match_table_name(user_request, ctx.schema_map)
         table_name, column_name = _match_column_name(user_request, ctx.schema_map, preferred_table)
 
         if column_name:
             values = _categorical_values(ctx.categorical_index, table_name, column_name)
             label = f'"{table_name}"."{column_name}"' if table_name else f'"{column_name}"'
+
             return RouterResult(
                 route=RouteName.DATA_QUESTION,
                 ok=True,
@@ -255,17 +394,22 @@ def answer_data_question(user_request: str, ctx: RouterContext) -> RouterResult:
 
         if keyword:
             matches = _find_related_tables(keyword, ctx.schema_map)
+
             if matches:
                 lines = [f"Likely tables related to '{keyword}':"]
+
                 for table_name, _score in matches[:5]:
                     related_cols = [
-                        col for col in ctx.schema_map[table_name].keys()
+                        col
+                        for col in ctx.schema_map[table_name].keys()
                         if keyword.lower() in col.lower()
                     ]
+
                     if related_cols:
                         lines.append(f'- {table_name} (matching columns: {", ".join(related_cols[:5])})')
                     else:
                         lines.append(f"- {table_name}")
+
                 return RouterResult(
                     route=RouteName.DATA_QUESTION,
                     ok=True,

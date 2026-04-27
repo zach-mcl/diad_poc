@@ -10,16 +10,10 @@ from .validate import is_select_only, sanitize_sql, strip_ansi_and_control_chars
 if TYPE_CHECKING:
     from .schema_aliases import GroundedQuery
 
-
-_TABLE_STOPWORDS = {
-    "test",
-    "export",
-    "sheet",
-    "sheet1",
-    "sheet2",
-    "sheet3",
-    "table",
-    "data",
+_TABLE_STOPWORDS = {"test", "export", "sheet", "sheet1", "sheet2", "sheet3", "table", "data"}
+_AGGREGATE_WORDS = {
+    "count", "sum", "avg", "average", "min", "max", "group", "order", "sort",
+    "distinct", "top", "bottom", "highest", "lowest", "chart", "plot", "graph",
 }
 
 
@@ -29,32 +23,34 @@ def format_categorical_text(categorical_index: dict[tuple[str, str], list[str]])
         vals = categorical_index[(t, c)]
         clean: list[str] = []
         seen = set()
-
         for v in vals:
             s = str(v).strip()
-            if not s:
+            if not s or s in seen:
                 continue
-            if s not in seen:
-                clean.append(s)
-                seen.add(s)
-
+            clean.append(s)
+            seen.add(s)
         if not clean:
             continue
-
         escaped = [v.replace('"', '\\"') for v in clean[:50]]
         quoted = ", ".join(f'"{v}"' for v in escaped)
         suffix = " ..." if len(clean) > 50 else ""
         lines.append(f'- "{t}"."{c}" allowed_values=[{quoted}]{suffix}')
-
     return "\n".join(lines).strip()
 
 
 def _normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", str(text or "").strip().lower())
+    text = str(text or "").strip().lower()
+    text = text.replace("__", " ").replace("_", " ").replace("-", " ")
+    text = re.sub(r"[^a-z0-9@. /]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _contains_exact_term(text: str, term: str) -> bool:
-    return re.search(rf"(?<!\w){re.escape(term.lower())}(?!\w)", text.lower()) is not None
+    text_n = _normalize_text(text)
+    term_n = _normalize_text(term)
+    if not text_n or not term_n:
+        return False
+    return re.search(rf"(?<![a-z0-9]){re.escape(term_n)}(?![a-z0-9])", text_n) is not None
 
 
 def _table_keywords(table_name: str) -> list[str]:
@@ -99,46 +95,16 @@ def find_missing_columns_tables(
     schema_map: dict[str, dict[str, str]],
     present_tables: set[str],
 ) -> list[tuple[str, str]]:
-    tokens = set(m.group(1) for m in re.finditer(r'(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\b', sql))
-
-    ignore = {
-        "select", "from", "join", "left", "right", "inner", "outer", "full", "cross", "where",
-        "group", "by", "order", "limit", "offset", "as", "on", "and", "or", "not", "null", "is",
-        "in", "case", "when", "then", "else", "end", "distinct", "with", "union", "all", "true",
-        "false", "like", "ilike", "between", "having", "lower", "upper", "trim", "ltrim", "rtrim",
-        "cast", "date", "coalesce", "count", "sum", "avg", "min", "max", "exists", "intersect",
-        "except",
-    }
-    tokens = {t for t in tokens if t.lower() not in ignore}
-
+    tokens = set(m.group(1) for m in re.finditer(r'(?<!\.)"([A-Za-z_][A-Za-z0-9_]*)"', sql))
     missing: list[tuple[str, str]] = []
-    for tok in tokens:
-        owners = [t for t, cols in schema_map.items() if tok in cols]
-        if len(owners) == 1:
-            owner = owners[0]
+    for token in sorted(tokens):
+        if any(token in schema_map.get(table, {}) for table in present_tables):
+            continue
+        owners = [table for table, cols in schema_map.items() if token in cols]
+        for owner in owners:
             if owner not in present_tables:
-                missing.append((tok, owner))
-
-    out: list[tuple[str, str]] = []
-    seen = set()
-    for col, owner in missing:
-        if (col, owner) not in seen:
-            out.append((col, owner))
-            seen.add((col, owner))
-    return out
-
-
-def qualify_base_columns_with_alias(
-    sql: str,
-    base_table: str,
-    base_alias: str,
-    schema_map: dict[str, dict[str, str]],
-) -> str:
-    out = sql
-    for base_col in schema_map.get(base_table, {}).keys():
-        pattern = rf'(?<![\."])\b{re.escape(base_col)}\b'
-        out = re.sub(pattern, f'{base_alias}.{_quote_ident(base_col)}', out)
-    return out
+                missing.append((token, owner))
+    return missing
 
 
 def auto_join_and_qualify(
@@ -154,14 +120,12 @@ def auto_join_and_qualify(
         return sql, False
 
     base_table = list(present)[0]
-
     by_owner: dict[str, list[str]] = {}
     for col, owner in missing:
         by_owner.setdefault(owner, []).append(col)
 
     rewritten = sql
     changed = False
-
     for owner_table, cols in by_owner.items():
         candidates = find_join_candidates(
             con,
@@ -173,15 +137,12 @@ def auto_join_and_qualify(
         )
         if not candidates:
             continue
-
-        left_col, right_col, score = candidates[0]
-
+        left_col, right_col, _score = candidates[0]
         join_clause = (
             f'FROM {_quote_ident(base_table)} t '
             f'JOIN {_quote_ident(owner_table)} o '
             f'ON lower(trim(t.{_quote_ident(left_col)})) = lower(trim(o.{_quote_ident(right_col)}))'
         )
-
         rewritten2 = re.sub(
             rf'\bFROM\s+"?{re.escape(base_table)}"?(?:\s+AS\s+\w+)?\b',
             join_clause,
@@ -189,34 +150,17 @@ def auto_join_and_qualify(
             count=1,
             flags=re.IGNORECASE,
         )
-
         if rewritten2 == rewritten:
             continue
-
         rewritten = rewritten2
         changed = True
-
         for col in cols:
-            rewritten = re.sub(
-                rf'(?<![\."])\b{re.escape(col)}\b',
-                f'o.{_quote_ident(col)}',
-                rewritten,
-            )
-
-        rewritten = qualify_base_columns_with_alias(rewritten, base_table, "t", schema_map)
-
-        print(
-            f"\n[auto-join] Added JOIN {base_table} ↔ {owner_table} "
-            f"using {left_col}={right_col} (overlap≈{score:.2f})"
-        )
+            rewritten = re.sub(rf'(?<!\.)"{re.escape(col)}"', f'o.{_quote_ident(col)}', rewritten)
 
     return rewritten, changed
 
 
-def repair_categorical_literals(
-    sql: str,
-    categorical_index: dict[tuple[str, str], list[str]],
-) -> str:
+def repair_categorical_literals(sql: str, categorical_index: dict[tuple[str, str], list[str]]) -> str:
     allowed_by_col: dict[str, set[str]] = {}
     for (_t, c), vals in categorical_index.items():
         allowed_by_col.setdefault(c, set())
@@ -226,7 +170,7 @@ def repair_categorical_literals(
                 allowed_by_col[c].add(s)
 
     pattern = re.compile(
-        r'(?P<lhs>(?:[A-Za-z_][A-Za-z0-9_]*\.)?"?(?P<col>[A-Za-z_][A-Za-z0-9_]*)"?)(?P<ws>\s*=\s*)\'(?P<val>[^\']*)\'',
+        r'(?P<lhs>(?:[A-Za-z_][A-Za-z0-9_]*\.)?"?(?P<col>[A-Za-z_][A-Za-z0-9_]*)"?)(?P<op>\s*=\s*)\'(?P<val>[^\']*)\'',
         flags=re.IGNORECASE,
     )
 
@@ -234,19 +178,15 @@ def repair_categorical_literals(
         col = m.group("col")
         lhs = m.group("lhs")
         val = m.group("val").strip()
-
         if col not in allowed_by_col:
             return m.group(0)
-
         allowed = allowed_by_col[col]
         if val in allowed:
             return m.group(0)
-
         parts = [p.strip() for p in val.split(",") if p.strip()]
         if len(parts) >= 2 and all(p in allowed for p in parts):
             in_list = ", ".join(_sql_literal(p) for p in parts)
             return f"{lhs} IN ({in_list})"
-
         return m.group(0)
 
     return pattern.sub(repl, sql)
@@ -256,33 +196,25 @@ def _has_subquery(sql: str) -> bool:
     return len(re.findall(r"\bselect\b", sql, flags=re.IGNORECASE)) > 1
 
 
-def _prepare_sql_candidate(
-    sql: str,
-    categorical_index: dict[tuple[str, str], list[str]],
-) -> str:
+def _prepare_sql_candidate(sql: str, categorical_index: dict[tuple[str, str], list[str]]) -> str:
     sql = strip_ansi_and_control_chars(sql)
     sql = sanitize_sql(strip_code_fences(sql)).strip()
     sql = repair_categorical_literals(sql, categorical_index)
     return sql
 
 
-def _try_execute_sql(
-    con,
-    sql: str,
-    schema_map: dict[str, dict[str, str]],
-) -> tuple[str, bool, list[tuple[str, str]], object]:
+def _try_execute_sql(con, sql: str, schema_map: dict[str, dict[str, str]]) -> tuple[str, bool, list[tuple[str, str]], object]:
     final_sql = sql
     changed = False
     missing: list[tuple[str, str]] = []
-
     if not _has_subquery(sql):
         present = extract_tables(sql)
         missing = find_missing_columns_tables(sql, schema_map, present)
         final_sql, changed = auto_join_and_qualify(con, sql, schema_map, missing)
 
-        ok_after_join, reason_after_join = is_select_only(final_sql)
-        if not ok_after_join:
-            raise ValueError(f"Auto-joined SQL failed validation: {reason_after_join}")
+    ok_after_join, reason_after_join = is_select_only(final_sql)
+    if not ok_after_join:
+        raise ValueError(f"Auto-joined SQL failed validation: {reason_after_join}")
 
     df = con.execute(final_sql).df()
     return final_sql, changed, missing, df
@@ -303,8 +235,32 @@ def _serialize_grounding_hits(hits: list[Any], limit: int = 5) -> list[dict[str,
     return serialized
 
 
+def _canonical_value_for_constraint(
+    table_name: str,
+    column_name: str,
+    value: str,
+    categorical_index: dict[tuple[str, str], list[str]] | None = None,
+) -> str:
+    value_s = str(value or "").strip()
+    prefix = f"{table_name}.{column_name}."
+    if value_s.startswith(prefix):
+        value_s = value_s[len(prefix) :]
+
+    if categorical_index:
+        allowed = [str(v).strip() for v in categorical_index.get((table_name, column_name), [])]
+        for allowed_value in allowed:
+            if value_s == allowed_value:
+                return allowed_value
+        for allowed_value in allowed:
+            if _normalize_text(value_s) == _normalize_text(allowed_value):
+                return allowed_value
+
+    return value_s
+
+
 def _normalize_bound_constraints(
     bound_constraints: list[dict[str, str]] | None,
+    categorical_index: dict[tuple[str, str], list[str]] | None = None,
 ) -> list[dict[str, str]]:
     cleaned: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -312,25 +268,20 @@ def _normalize_bound_constraints(
     for item in bound_constraints or []:
         table_name = str(item.get("table", "")).strip()
         column_name = str(item.get("column", "")).strip()
-        value = str(item.get("value", "")).strip()
+        value = _canonical_value_for_constraint(
+            table_name,
+            column_name,
+            str(item.get("value", "")).strip(),
+            categorical_index,
+        )
         source = str(item.get("source", "")).strip() or "router_binding"
-
-        if not table_name or not column_name:
+        if not table_name or not column_name or not value:
             continue
-
         key = (table_name, column_name, value)
         if key in seen:
             continue
         seen.add(key)
-
-        cleaned.append(
-            {
-                "table": table_name,
-                "column": column_name,
-                "value": value,
-                "source": source,
-            }
-        )
+        cleaned.append({"table": table_name, "column": column_name, "value": value, "source": source})
 
     return cleaned
 
@@ -346,10 +297,9 @@ def _infer_mentioned_tables(
     for table_name in schema_map.keys():
         if _contains_exact_term(normalized_query, table_name.lower()):
             scores[table_name] += 10
-
         for token in _table_keywords(table_name):
             if _contains_exact_term(normalized_query, token):
-                if token in {"notion", "okta"}:
+                if token in {"notion", "okta", "hr"}:
                     scores[table_name] += 4
                 else:
                     scores[table_name] += 1
@@ -364,10 +314,7 @@ def _infer_mentioned_tables(
     return [table_name for table_name, _ in ranked]
 
 
-def _infer_preferred_table(
-    query: str,
-    mentioned_tables: list[str],
-) -> str | None:
+def _infer_preferred_table(query: str, mentioned_tables: list[str]) -> str | None:
     if not mentioned_tables:
         return None
     if len(mentioned_tables) == 1:
@@ -375,34 +322,21 @@ def _infer_preferred_table(
 
     normalized_query = _normalize_text(query)
     scored: list[tuple[int, str]] = []
-
     for table_name in mentioned_tables:
         score = 0
         for token in _table_keywords(table_name):
             if not token:
                 continue
-
-            if re.search(
-                rf"\b(users|people|rows|records|members)\s+in\s+{re.escape(token)}\b",
-                normalized_query,
-            ):
+            if re.search(rf"\b(users|people|rows|records|members|employees)\s+in\s+{re.escape(token)}\b", normalized_query):
                 score += 8
-
-            if re.search(
-                rf"\bin\s+{re.escape(token)}\b\s+who\b",
-                normalized_query,
-            ):
+            if re.search(rf"\bin\s+{re.escape(token)}\b\s+who\b", normalized_query):
                 score += 8
-
             if re.search(rf"\bfrom\s+{re.escape(token)}\b", normalized_query):
                 score += 6
-
             if re.search(rf"\bin\s+{re.escape(token)}\b", normalized_query):
                 score += 3
-
         if _contains_exact_term(normalized_query, table_name.lower()):
             score += 2
-
         scored.append((score, table_name))
 
     scored.sort(key=lambda x: (-x[0], x[1].lower()))
@@ -414,38 +348,223 @@ def _infer_preferred_table(
 
 
 def _is_simple_filter_request(user_request: str) -> bool:
-    q = user_request.lower()
-    blockers = [
-        " count ",
-        " sum ",
-        " avg ",
-        " average ",
-        " min ",
-        " max ",
-        " group ",
-        " order ",
-        " sort ",
-        " distinct ",
-        " top ",
-        " bottom ",
-        " join ",
-        " compare ",
-        " chart ",
-        " plot ",
-        " graph ",
-    ]
-    padded = f" {q} "
-    return not any(token in padded for token in blockers)
+    q = f" {_normalize_text(user_request)} "
+    return not any(f" {word} " in q for word in _AGGREGATE_WORDS)
 
 
 def _infer_boolean_operator(user_request: str) -> str:
-    lowered = f" {user_request.lower()} "
+    lowered = f" {_normalize_text(user_request)} "
     has_and = " and " in lowered
     has_or = " or " in lowered
-
     if has_or and not has_and:
         return "OR"
     return "AND"
+
+
+def _column_aliases(column_name: str) -> set[str]:
+    normalized = _normalize_text(column_name)
+    aliases = {normalized, column_name.lower(), column_name.lower().replace("_", " ")}
+    if normalized == "full name" or column_name.lower() == "full_name":
+        aliases.update({"full name", "fullname", "name", "names", "employee name", "employee names"})
+    if normalized == "email":
+        aliases.update({"email", "emails", "mail"})
+    if normalized == "department":
+        aliases.update({"department", "dept", "team"})
+    if normalized == "role":
+        aliases.update({"role", "roles", "job role"})
+    return {a for a in aliases if a}
+
+
+
+_IDENTITY_COLUMNS = {"employee_id", "full_name", "name", "email", "user_email", "email_address"}
+_PEOPLE_WORDS = {
+    "employee", "employees", "person", "people", "worker", "workers",
+    "staff", "user", "users", "member", "members", "who",
+}
+_IDENTITY_BLOCK_PHRASES = {
+    "count", "how many", "average", "avg", "sum", "total", "group by",
+    "distinct", "unique", "breakdown", "distribution",
+}
+
+
+def _is_people_lookup_request(user_request: str) -> bool:
+    q = _normalize_text(user_request)
+    return any(_contains_exact_term(q, word) for word in _PEOPLE_WORDS)
+
+
+def _blocks_default_identity_columns(user_request: str) -> bool:
+    q = _normalize_text(user_request)
+    if _contains_exact_term(q, "only"):
+        return True
+    return any(phrase in q for phrase in _IDENTITY_BLOCK_PHRASES)
+
+
+def _selected_has_identity(selected_columns: list[tuple[str, str]]) -> bool:
+    for _table_name, column_name in selected_columns:
+        if _normalize_text(column_name).replace(" ", "_") in _IDENTITY_COLUMNS:
+            return True
+    return False
+
+
+def _should_add_identity_columns(user_request: str, selected_columns: list[tuple[str, str]]) -> bool:
+    if _blocks_default_identity_columns(user_request):
+        return False
+    if not _is_people_lookup_request(user_request):
+        return False
+    if _selected_has_identity(selected_columns):
+        return False
+    return True
+
+
+def _find_identity_table(schema_map: dict[str, dict[str, str]]) -> str | None:
+    candidates: list[tuple[int, str]] = []
+    for table_name, columns in schema_map.items():
+        normalized_cols = {_normalize_text(col).replace(" ", "_") for col in columns.keys()}
+        if "employee_id" not in normalized_cols or "full_name" not in normalized_cols:
+            continue
+
+        score = 0
+        table_n = _normalize_text(table_name)
+        if table_n == "hr data" or table_name.lower() == "hr_data":
+            score += 10
+        if "hr" in table_n:
+            score += 5
+        if "employee" in table_n or "people" in table_n or "user" in table_n:
+            score += 3
+        candidates.append((score, table_name))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: (-x[0], x[1].lower()))
+    return candidates[0][1]
+
+
+def _has_column(schema_map: dict[str, dict[str, str]], table_name: str, column_name: str) -> bool:
+    return column_name in schema_map.get(table_name, {})
+
+
+def _can_join_identity_table(schema_map: dict[str, dict[str, str]], base_table: str, identity_table: str | None) -> bool:
+    if not identity_table or identity_table == base_table:
+        return False
+    return _has_column(schema_map, base_table, "employee_id") and _has_column(schema_map, identity_table, "employee_id")
+
+
+def _identity_join_for_request(
+    *,
+    user_request: str,
+    selected_columns: list[tuple[str, str]],
+    schema_map: dict[str, dict[str, str]],
+    base_table: str,
+) -> str | None:
+    if not _should_add_identity_columns(user_request, selected_columns):
+        return None
+    if _has_column(schema_map, base_table, "full_name"):
+        return None
+    identity_table = _find_identity_table(schema_map)
+    if _can_join_identity_table(schema_map, base_table, identity_table):
+        return identity_table
+    return None
+
+
+def _add_default_identity_columns(
+    *,
+    user_request: str,
+    selected_columns: list[tuple[str, str]],
+    schema_map: dict[str, dict[str, str]],
+    base_table: str,
+    identity_table: str | None = None,
+) -> list[tuple[str, str]]:
+    if not _should_add_identity_columns(user_request, selected_columns):
+        return selected_columns
+
+    enriched = list(selected_columns)
+    seen = set(enriched)
+
+    def add_front(table_name: str, column_name: str):
+        key = (table_name, column_name)
+        if key not in seen and _has_column(schema_map, table_name, column_name):
+            enriched.insert(0, key)
+            seen.add(key)
+
+    # Insert in reverse order because add_front places each item at the beginning.
+    if identity_table and identity_table != base_table:
+        add_front(identity_table, "full_name")
+        add_front(base_table, "employee_id")
+    else:
+        add_front(base_table, "full_name")
+        add_front(base_table, "employee_id")
+
+    return enriched
+
+
+def _build_select_clause_with_aliases(
+    selected_columns: list[tuple[str, str]],
+    *,
+    base_table: str,
+    alias_map: dict[str, str],
+    default_alias: str | None = None,
+) -> str:
+    if not selected_columns:
+        return "*" if default_alias is None else f"{default_alias}.*"
+
+    parts: list[str] = []
+    seen_sql_parts: set[str] = set()
+    for table_name, column_name in selected_columns:
+        alias = alias_map.get(table_name)
+        if alias is None and table_name == base_table:
+            alias = default_alias
+        if alias is None:
+            continue
+        lhs = f'{alias}.{_quote_ident(column_name)}' if alias else _quote_ident(column_name)
+        if lhs not in seen_sql_parts:
+            parts.append(lhs)
+            seen_sql_parts.add(lhs)
+
+    return ", ".join(parts) if parts else ("*" if default_alias is None else f"{default_alias}.*")
+
+
+def _infer_selected_columns(
+    user_request: str,
+    schema_map: dict[str, dict[str, str]],
+    preferred_table: str | None,
+    mentioned_tables: list[str],
+    bound_constraints: list[dict[str, str]],
+) -> list[tuple[str, str]]:
+    # Only infer projection for simple retrieval phrasing. Aggregates/grouping should go to the LLM path.
+    if not _is_simple_filter_request(user_request):
+        return []
+
+    candidate_tables: list[str] = []
+    if preferred_table:
+        candidate_tables.append(preferred_table)
+    for t in mentioned_tables:
+        if t not in candidate_tables:
+            candidate_tables.append(t)
+    for item in bound_constraints:
+        if item["table"] not in candidate_tables:
+            candidate_tables.append(item["table"])
+    if not candidate_tables:
+        candidate_tables = list(schema_map.keys())
+
+    request_n = _normalize_text(user_request)
+    selected: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for table_name in candidate_tables:
+        for column_name in schema_map.get(table_name, {}).keys():
+            for alias in _column_aliases(column_name):
+                if _contains_exact_term(request_n, alias):
+                    key = (table_name, column_name)
+                    if key not in seen:
+                        selected.append(key)
+                        seen.add(key)
+                    break
+
+    # Do not treat filter columns as requested output columns unless the user explicitly named them.
+    filter_cols = {(item["table"], item["column"]) for item in bound_constraints}
+    selected = [item for item in selected if item not in filter_cols or _contains_exact_term(request_n, item[1])]
+
+    return selected
 
 
 def _group_constraints_for_sql(
@@ -461,17 +580,14 @@ def _group_constraints_for_sql(
     for column_name, values in by_column.items():
         unique_values: list[str] = []
         seen_values = set()
-
         for value in values:
             if value not in seen_values:
                 unique_values.append(value)
                 seen_values.add(value)
 
         lhs = f'{alias}.{_quote_ident(column_name)}' if alias else _quote_ident(column_name)
-
         if len(unique_values) > 1 and operator == "AND":
             return None
-
         if len(unique_values) == 1:
             clauses.append(f"{lhs} = {_sql_literal(unique_values[0])}")
         else:
@@ -481,11 +597,32 @@ def _group_constraints_for_sql(
     return clauses
 
 
+def _build_select_clause(
+    selected_columns: list[tuple[str, str]],
+    *,
+    base_table: str,
+    alias: str | None = None,
+) -> str:
+    if not selected_columns:
+        return "*" if alias is None else f"{alias}.*"
+
+    parts: list[str] = []
+    for table_name, column_name in selected_columns:
+        if table_name != base_table:
+            continue
+        lhs = f'{alias}.{_quote_ident(column_name)}' if alias else _quote_ident(column_name)
+        parts.append(lhs)
+
+    return ", ".join(parts) if parts else ("*" if alias is None else f"{alias}.*")
+
+
 def _build_sql_from_bound_constraints(
     *,
     preferred_table: str | None,
     bound_constraints: list[dict[str, str]],
     user_request: str,
+    schema_map: dict[str, dict[str, str]],
+    mentioned_tables: list[str],
 ) -> str | None:
     constraints = _normalize_bound_constraints(bound_constraints)
     if not constraints or not preferred_table:
@@ -498,13 +635,50 @@ def _build_sql_from_bound_constraints(
         return None
 
     operator = _infer_boolean_operator(user_request)
-    clauses = _group_constraints_for_sql(constraints, operator)
+    clauses = _group_constraints_for_sql(constraints, operator, alias="t")
     if not clauses:
         return None
 
+    selected_columns = _infer_selected_columns(
+        user_request=user_request,
+        schema_map=schema_map,
+        preferred_table=preferred_table,
+        mentioned_tables=mentioned_tables,
+        bound_constraints=constraints,
+    )
+
+    identity_table = _identity_join_for_request(
+        user_request=user_request,
+        selected_columns=selected_columns,
+        schema_map=schema_map,
+        base_table=preferred_table,
+    )
+    selected_columns = _add_default_identity_columns(
+        user_request=user_request,
+        selected_columns=selected_columns,
+        schema_map=schema_map,
+        base_table=preferred_table,
+        identity_table=identity_table,
+    )
+
+    alias_map = {preferred_table: "t"}
+    from_clause = f"FROM {_quote_ident(preferred_table)} t"
+    if identity_table:
+        alias_map[identity_table] = "h"
+        from_clause += (
+            f"\nJOIN {_quote_ident(identity_table)} h "
+            f"ON lower(trim(t.{_quote_ident('employee_id')})) = lower(trim(h.{_quote_ident('employee_id')}))"
+        )
+
+    select_clause = _build_select_clause_with_aliases(
+        selected_columns,
+        base_table=preferred_table,
+        alias_map=alias_map,
+        default_alias="t",
+    )
     joiner = f" {operator} "
     where_clause = joiner.join(clauses)
-    return f'SELECT * FROM {_quote_ident(preferred_table)} WHERE {where_clause}'
+    return f"SELECT {select_clause}\n{from_clause}\nWHERE {where_clause}"
 
 
 def _build_cross_table_bound_sql(
@@ -516,10 +690,18 @@ def _build_cross_table_bound_sql(
     preferred_table: str | None,
     bound_constraints: list[dict[str, str]],
 ) -> str | None:
+    """Build deterministic SQL when filters span two tables.
+
+    Important behavior:
+    - If the second table is only being used as a filter, use EXISTS instead of
+      a plain JOIN. A normal JOIN duplicates base-table rows when the other
+      table has multiple matching rows per employee/user/id.
+    - Return only rows from the preferred/base table, unless the LLM path is
+      needed for more complex cross-table output.
+    """
     from .db import find_join_candidates
 
     constraints = _normalize_bound_constraints(bound_constraints)
-
     if not _is_simple_filter_request(user_request):
         return None
 
@@ -539,47 +721,92 @@ def _build_cross_table_bound_sql(
     base_constraints = [item for item in constraints if item["table"] == base_table]
     other_constraints = [item for item in constraints if item["table"] == other_table]
 
-    if not base_constraints and not other_constraints:
+    # If there is nothing to filter on the other table, do not join at all.
+    # The same-table deterministic path can handle the base-table filters.
+    if not other_constraints:
         return None
 
+    # Cross-table OR logic is ambiguous in this deterministic path. Let the LLM
+    # path handle it rather than producing a misleading EXISTS query.
     operator = _infer_boolean_operator(user_request)
+    if operator != "AND":
+        return None
 
-    base_clauses = _group_constraints_for_sql(base_constraints, operator, alias="t") if base_constraints else []
-    other_clauses = _group_constraints_for_sql(other_constraints, operator, alias="o") if other_constraints else []
-
+    base_clauses = _group_constraints_for_sql(base_constraints, "AND", alias="t") if base_constraints else []
+    other_clauses = _group_constraints_for_sql(other_constraints, "AND", alias="o")
     if base_constraints and base_clauses is None:
         return None
-    if other_constraints and other_clauses is None:
+    if not other_clauses:
         return None
 
-    candidates = find_join_candidates(
-        con,
-        schema_map,
-        base_table,
-        other_table,
-        sample_limit=200,
-        min_overlap=0.05,
-    )
+    candidates = find_join_candidates(con, schema_map, base_table, other_table, sample_limit=200, min_overlap=0.05)
     if not candidates:
         return None
-
     left_col, right_col, _score = candidates[0]
 
-    where_parts = list(base_clauses or []) + list(other_clauses or [])
-    if not where_parts:
-        return None
-
-    joiner = f" {operator} "
-    where_clause = joiner.join(where_parts)
-
-    return (
-        f'SELECT t.*\n'
-        f'FROM {_quote_ident(base_table)} t\n'
-        f'JOIN {_quote_ident(other_table)} o\n'
-        f'  ON lower(trim(t.{_quote_ident(left_col)})) = lower(trim(o.{_quote_ident(right_col)}))\n'
-        f'WHERE {where_clause}'
+    selected_columns = _infer_selected_columns(
+        user_request=user_request,
+        schema_map=schema_map,
+        preferred_table=base_table,
+        mentioned_tables=mentioned_unique,
+        bound_constraints=constraints,
     )
 
+    # If the request clearly asks for columns that belong to the filter table,
+    # this simple EXISTS path is not the right fit. Fall back to the LLM path.
+    if any(table_name != base_table for table_name, _column_name in selected_columns):
+        return None
+
+    identity_table = _identity_join_for_request(
+        user_request=user_request,
+        selected_columns=selected_columns,
+        schema_map=schema_map,
+        base_table=base_table,
+    )
+    selected_columns = _add_default_identity_columns(
+        user_request=user_request,
+        selected_columns=selected_columns,
+        schema_map=schema_map,
+        base_table=base_table,
+        identity_table=identity_table,
+    )
+
+    alias_map = {base_table: "t"}
+    if identity_table:
+        alias_map[identity_table] = "h"
+
+    select_clause = _build_select_clause_with_aliases(
+        selected_columns,
+        base_table=base_table,
+        alias_map=alias_map,
+        default_alias="t",
+    )
+    join_condition = f"lower(trim(t.{_quote_ident(left_col)})) = lower(trim(o.{_quote_ident(right_col)}))"
+    exists_parts = [join_condition] + list(other_clauses)
+    exists_where = " AND ".join(exists_parts)
+
+    where_parts = list(base_clauses or [])
+    where_parts.append(
+        "EXISTS (\n"
+        f"    SELECT 1\n"
+        f"    FROM {_quote_ident(other_table)} o\n"
+        f"    WHERE {exists_where}\n"
+        ")"
+    )
+    where_clause = " AND ".join(where_parts)
+
+    from_clause = f"FROM {_quote_ident(base_table)} t"
+    if identity_table:
+        from_clause += (
+            f"\nJOIN {_quote_ident(identity_table)} h "
+            f"ON lower(trim(t.{_quote_ident('employee_id')})) = lower(trim(h.{_quote_ident('employee_id')}))"
+        )
+
+    return (
+        f"SELECT {select_clause}\n"
+        f"{from_clause}\n"
+        f"WHERE {where_clause}"
+    )
 
 def _build_grounding_metadata(
     user_request_original: str,
@@ -597,11 +824,7 @@ def _build_grounding_metadata(
         "preferred_table": preferred_table,
         "mentioned_tables": list(mentioned_tables or []),
         "bound_constraints": list(bound_constraints or []),
-        "top_grounding_hits": {
-            "tables": [],
-            "columns": [],
-            "values": [],
-        },
+        "top_grounding_hits": {"tables": [], "columns": [], "values": []},
     }
 
     if grounded_query is None:
@@ -639,25 +862,18 @@ def run_sql_query(
     deterministic_sql = ""
     deterministic_join_sql = ""
 
-    normalized_bound_constraints = _normalize_bound_constraints(bound_constraints)
+    normalized_bound_constraints = _normalize_bound_constraints(bound_constraints, categorical_index)
 
     effective_mentioned_tables = list(mentioned_tables or [])
     if not effective_mentioned_tables:
-        effective_mentioned_tables = _infer_mentioned_tables(
-            user_request_original,
-            schema_map,
-            normalized_bound_constraints,
-        )
+        effective_mentioned_tables = _infer_mentioned_tables(user_request_original, schema_map, normalized_bound_constraints)
 
     for item in normalized_bound_constraints:
         table_name = item["table"]
         if table_name not in effective_mentioned_tables:
             effective_mentioned_tables.append(table_name)
 
-    inferred_preferred = _infer_preferred_table(
-        user_request_original,
-        effective_mentioned_tables,
-    )
+    inferred_preferred = _infer_preferred_table(user_request_original, effective_mentioned_tables)
     effective_preferred_table = inferred_preferred or preferred_table
 
     grounding_metadata = _build_grounding_metadata(
@@ -682,12 +898,7 @@ def run_sql_query(
 
     if deterministic_join_sql:
         try:
-            final_sql, changed, missing, df = _try_execute_sql(
-                con=con,
-                sql=deterministic_join_sql,
-                schema_map=schema_map,
-            )
-
+            final_sql, changed, missing, df = _try_execute_sql(con=con, sql=deterministic_join_sql, schema_map=schema_map)
             return RouterResult(
                 route=RouteName.SQL_QUERY,
                 ok=True,
@@ -707,7 +918,6 @@ def run_sql_query(
                     "used_bound_sql": True,
                 },
             ).with_query(user_request_original)
-
         except Exception as bound_join_exc:
             grounding_metadata["deterministic_join_sql_error"] = str(bound_join_exc)
             grounding_metadata["deterministic_join_sql"] = deterministic_join_sql
@@ -718,16 +928,12 @@ def run_sql_query(
             preferred_table=effective_preferred_table,
             bound_constraints=normalized_bound_constraints,
             user_request=user_request_original,
+            schema_map=schema_map,
+            mentioned_tables=effective_mentioned_tables,
         ) or ""
-
         if deterministic_sql:
             try:
-                final_sql, changed, missing, df = _try_execute_sql(
-                    con=con,
-                    sql=deterministic_sql,
-                    schema_map=schema_map,
-                )
-
+                final_sql, changed, missing, df = _try_execute_sql(con=con, sql=deterministic_sql, schema_map=schema_map)
                 return RouterResult(
                     route=RouteName.SQL_QUERY,
                     ok=True,
@@ -747,14 +953,12 @@ def run_sql_query(
                         "used_bound_sql": True,
                     },
                 ).with_query(user_request_original)
-
             except Exception as bound_exc:
                 grounding_metadata["deterministic_sql_error"] = str(bound_exc)
                 grounding_metadata["deterministic_sql"] = deterministic_sql
 
     def _run_rewrite(first_error_text: str) -> RouterResult:
         nonlocal rewrite_raw, rewrite_sql, final_sql
-
         rewrite_raw = rewrite_failed_sql(
             schema_text=schema_text,
             categorical_text=categorical_text,
@@ -763,9 +967,7 @@ def run_sql_query(
             error_text=first_error_text,
             model=rewrite_model,
         )
-
         rewrite_sql = _prepare_sql_candidate(rewrite_raw, categorical_index)
-
         if rewrite_sql == "-- I_DONT_KNOW":
             return RouterResult(
                 route=RouteName.SQL_QUERY,
@@ -810,12 +1012,7 @@ def run_sql_query(
             ).with_query(user_request_original)
 
         try:
-            final_sql, changed, missing, df = _try_execute_sql(
-                con=con,
-                sql=rewrite_sql,
-                schema_map=schema_map,
-            )
-
+            final_sql, changed, missing, df = _try_execute_sql(con=con, sql=rewrite_sql, schema_map=schema_map)
             return RouterResult(
                 route=RouteName.SQL_QUERY,
                 ok=True,
@@ -839,7 +1036,6 @@ def run_sql_query(
                     "used_bound_sql": False,
                 },
             ).with_query(user_request_original)
-
         except Exception as second_exc:
             return RouterResult(
                 route=RouteName.SQL_QUERY,
@@ -870,7 +1066,6 @@ def run_sql_query(
             categorical_text=categorical_text,
             user_request=generation_request,
         )
-
         sql = _prepare_sql_candidate(raw, categorical_index)
 
         if sql == "-- I_DONT_KNOW":
@@ -893,12 +1088,7 @@ def run_sql_query(
             return _run_rewrite(f"Validation failed before execution: {reason}")
 
         try:
-            final_sql, changed, missing, df = _try_execute_sql(
-                con=con,
-                sql=sql,
-                schema_map=schema_map,
-            )
-
+            final_sql, changed, missing, df = _try_execute_sql(con=con, sql=sql, schema_map=schema_map)
             return RouterResult(
                 route=RouteName.SQL_QUERY,
                 ok=True,
@@ -918,7 +1108,6 @@ def run_sql_query(
                     "used_bound_sql": False,
                 },
             ).with_query(user_request_original)
-
         except Exception as first_exc:
             return _run_rewrite(str(first_exc))
 
