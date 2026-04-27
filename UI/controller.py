@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import threading
 
 from UI.state import AppState
 
 from app.db import connect, load_csvs, get_schema_map, get_schema_text, build_categorical_index
-from app.projects import add_files_to_project, create_project, get_project_file_paths, list_projects, load_project_metadata
+from app.projects import add_files_to_project, create_project, delete_project as delete_project_folder, get_project_file_paths, list_projects, load_project_metadata
 from app.schema_aliases import build_alias_index
 
 try:
@@ -14,9 +15,17 @@ try:
 except ImportError:
     load_xlsx = None
 
+try:
+    from app.db import load_json
+except ImportError:
+    load_json = None
+
 from app.router import route_request
 from app.router_types import RouterContext
 from app.sql_flow import format_categorical_text
+
+
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
 class Controller:
@@ -26,14 +35,69 @@ class Controller:
         self.con = None
         self.router_ctx: RouterContext | None = None
 
-    def _set_busy(self, busy: bool, error: str | None = None):
+    def format_schema_insert_text(
+        self,
+        table: str,
+        column: str | None = None,
+        value: object | None = None,
+    ) -> str:
+        """Return the text inserted when a Data Guide item is dropped into chat."""
+        if value is not None and column:
+            clean_value = str(value).replace('"', '\"')
+            return f'{column} is "{clean_value}"'
+        if column:
+            return str(column)
+        return str(table)
+
+    def format_schema_search_text(
+        self,
+        table: str,
+        column: str | None = None,
+        value: object | None = None,
+    ) -> str:
+        """Return the text used when a Data Guide item is dropped into guide search."""
+        if value is not None:
+            return str(value)
+        if column:
+            return str(column)
+        return str(table)
+
+    def _set_busy(self, busy: bool, error: str | None = None, status: str | None = None):
         self.state.is_busy = busy
         self.state.error = error
+        self.state.status_message = status if busy else None
+        self.on_state_changed()
+
+    def _set_status(self, status: str):
+        self.state.status_message = status
         self.on_state_changed()
 
     def refresh_projects(self):
         self.state.available_projects = list_projects()
         self.on_state_changed()
+
+    def delete_project(self, project_dir: str | Path):
+        target = Path(project_dir).resolve()
+
+        def work():
+            try:
+                self._set_busy(True, None, "Deleting project...")
+
+                current = self.state.current_project_path
+                deleting_current = current is not None and Path(current).resolve() == target
+
+                delete_project_folder(target)
+
+                if deleting_current:
+                    self._clear_open_project_state()
+
+                self.state.available_projects = list_projects()
+                self._set_busy(False, None)
+            except Exception as exc:
+                self.state.available_projects = list_projects()
+                self._set_busy(False, str(exc))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _close_connection(self):
         if self.con is not None:
@@ -42,6 +106,27 @@ class Controller:
             except Exception:
                 pass
             self.con = None
+
+    def _clear_open_project_state(self):
+        self._close_connection()
+        self.router_ctx = None
+        self.state.data_folder = None
+        self.state.csv_files = []
+        self.state.xlsx_files = []
+        self.state.json_files = []
+        self.state.tables = []
+        self.state.schema_map = {}
+        self.state.categorical_index = {}
+        self.state.generated_sql = None
+        self.state.result_preview = None
+        self.state.export_path = None
+        self.state.artifact_path = None
+        self.state.artifact_kind = None
+        self.state.auto_open_artifact_path = None
+        self.state.current_project_name = None
+        self.state.current_project_path = None
+        self.state.current_project_created_at = None
+        self.state.messages = []
 
     def _build_router_context(self, model: str = "duckdb-nsql") -> RouterContext:
         if self.con is None:
@@ -67,6 +152,7 @@ class Controller:
 
         source_files = [str(p) for p in getattr(self.state, "csv_files", [])]
         source_files.extend(str(p) for p in getattr(self.state, "xlsx_files", []))
+        source_files.extend(str(p) for p in getattr(self.state, "json_files", []))
 
         return RouterContext(
             con=self.con,
@@ -86,9 +172,10 @@ class Controller:
 
         csvs = sorted([p for p in file_paths if p.suffix.lower() == ".csv"])
         xlsxs = sorted([p for p in file_paths if p.suffix.lower() == ".xlsx"])
+        jsons = sorted([p for p in file_paths if p.suffix.lower() == ".json"])
 
-        if not csvs and not xlsxs:
-            raise RuntimeError(f"No CSV or XLSX files found in project: {metadata.get('name', project_dir.name)}")
+        if not csvs and not xlsxs and not jsons:
+            raise RuntimeError(f"No CSV, XLSX, or JSON files found in project: {metadata.get('name', project_dir.name)}")
 
         self._close_connection()
         self.con = connect()
@@ -105,6 +192,13 @@ class Controller:
             else:
                 tables.extend(load_xlsx(self.con, xlsxs))
 
+        skipped_json = False
+        if jsons:
+            if load_json is None:
+                skipped_json = True
+            else:
+                tables.extend(load_json(self.con, jsons))
+
         schema_map = get_schema_map(self.con)
         categorical_index = build_categorical_index(
             self.con,
@@ -116,12 +210,16 @@ class Controller:
         self.state.data_folder = project_dir
         self.state.csv_files = csvs
         self.state.xlsx_files = xlsxs
+        self.state.json_files = jsons
         self.state.tables = tables
         self.state.schema_map = schema_map
         self.state.categorical_index = categorical_index
         self.state.generated_sql = None
         self.state.result_preview = None
         self.state.export_path = None
+        self.state.artifact_path = None
+        self.state.artifact_kind = None
+        self.state.auto_open_artifact_path = None
         self.state.error = None
 
         self.state.current_project_name = metadata.get("name", project_dir.name)
@@ -132,16 +230,29 @@ class Controller:
         self.state.available_projects = list_projects()
 
         intro_lines = [
-            f"Loaded project: {self.state.current_project_name}",
-            f"Project path: {project_dir}",
-            f"Files: {len(csvs) + len(xlsxs)}",
-            f"Tables: {', '.join(tables) if tables else '(none)'}",
-            f"CSV files: {len(csvs)}",
-            f"XLSX files: {len(xlsxs)}",
+            f"You're ready to chat with {self.state.current_project_name}.",
+            "",
+            f"I loaded {len(csvs) + len(xlsxs) + len(jsons)} file(s) and created {len(tables)} table(s).",
         ]
 
+        if tables:
+            intro_lines.append("")
+            intro_lines.append("Tables available:")
+            for table in tables:
+                intro_lines.append(f"- {table}")
+
+        intro_lines.append("")
+        intro_lines.append("You can ask for rows, counts, filters, joins, charts, or just ask what tables and columns are available.")
+
+        warnings: list[str] = []
         if skipped_xlsx:
-            intro_lines.append("Warning: XLSX files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.")
+            warnings.append("Some XLSX files were skipped because app.db.load_xlsx is not available.")
+        if skipped_json:
+            warnings.append("Some JSON files were skipped because app.db.load_json is not available.")
+        if warnings:
+            intro_lines.append("")
+            intro_lines.append("Heads up:")
+            intro_lines.extend(f"- {warning}" for warning in warnings)
 
         self.state.messages = [
             {
@@ -153,7 +264,7 @@ class Controller:
     def create_project(self, project_name: str, file_paths: list[str | Path], model: str = "duckdb-nsql"):
         def work():
             try:
-                self._set_busy(True, None)
+                self._set_busy(True, None, "Creating project...")
                 project_dir = create_project(project_name, file_paths)
                 self._load_project_into_state(project_dir, model=model)
                 self._set_busy(False, None)
@@ -166,7 +277,7 @@ class Controller:
     def open_project(self, project_dir: str | Path, model: str = "duckdb-nsql"):
         def work():
             try:
-                self._set_busy(True, None)
+                self._set_busy(True, None, "Opening project...")
                 self._load_project_into_state(Path(project_dir), model=model)
                 self._set_busy(False, None)
             except Exception as exc:
@@ -184,7 +295,7 @@ class Controller:
 
         def work():
             try:
-                self._set_busy(True, None)
+                self._set_busy(True, None, "Adding files...")
                 add_files_to_project(project_dir, file_paths)
                 self._load_project_into_state(project_dir, model=model)
                 self._set_busy(False, None)
@@ -294,6 +405,136 @@ class Controller:
 
         return "\n".join(parts)
 
+    def _clean_display_value(self, value) -> str:
+        text = str(value)
+        parts = text.split(".")
+        if len(parts) >= 3:
+            # Internal alias values sometimes look like table.column.Value.
+            # For normal users, show just the actual value.
+            return parts[-1]
+        return text
+
+    def _format_applied_filters(self, metadata: dict) -> list[str]:
+        filters: list[str] = []
+        seen: set[str] = set()
+
+        for item in metadata.get("bound_constraints") or []:
+            if not isinstance(item, dict):
+                continue
+            column = str(item.get("column") or "").strip()
+            value = self._clean_display_value(item.get("value", "")).strip()
+            if not column or not value:
+                continue
+            line = f"- {column}: {value}"
+            if line not in seen:
+                seen.add(line)
+                filters.append(line)
+
+        return filters
+
+    def _format_columns_included(self, df) -> str | None:
+        try:
+            columns = [str(col) for col in list(df.columns)]
+        except Exception:
+            return None
+
+        if not columns:
+            return None
+
+        if len(columns) <= 8:
+            return ", ".join(columns)
+
+        return ", ".join(columns[:8]) + f", and {len(columns) - 8} more"
+
+    def _format_friendly_message(self, user_text: str, result) -> str:
+        metadata = result.metadata or {}
+        route = getattr(result.route, "value", str(result.route))
+        route = str(route)
+
+        if result.error:
+            message = result.message or str(result.error)
+            return (
+                "I could not finish that request.\n\n"
+                f"What happened: {message}\n\n"
+                "Try rewording the question or check the table and column names in the Data Guide."
+            )
+
+        if route == "OUT_OF_SCOPE":
+            return result.message or "I can only answer questions about the data loaded in this project."
+
+        if route == "DATA_QUESTION":
+            return result.message or "Here is what I found in the loaded project metadata."
+
+        if route == "PYTHON_TOOL":
+            parts = [result.message or "I ran that data tool for you."]
+            output_path = Path(result.output_path) if result.output_path else None
+            is_chart = bool(output_path and output_path.suffix.lower() in _IMAGE_EXTENSIONS)
+            if is_chart:
+                parts.append("")
+                parts.append("I opened the chart for you. You can also use Download Chart to save the image.")
+                if result.dataframe is not None:
+                    parts.append("Open Output will show the chart again, and the chart data is also available as a CSV export.")
+            elif result.output_path:
+                parts.append("")
+                parts.append("The output is ready to open or download.")
+            elif result.dataframe is not None:
+                parts.append("")
+                parts.append("You can use Open Output to preview the results, or Download CSV to save them.")
+            return "\n".join(parts)
+
+        if route == "SQL_QUERY":
+            df = result.dataframe
+            row_count = metadata.get("row_count")
+
+            if df is not None:
+                try:
+                    rows, cols = df.shape
+                except Exception:
+                    rows = row_count if row_count is not None else 0
+                    cols = 0
+            else:
+                rows = row_count
+                cols = 0
+
+            if rows == 0:
+                parts = [
+                    "I did not find any matching rows.",
+                    "",
+                    "That usually means the filters were valid, but no records matched them.",
+                ]
+            elif rows is not None:
+                row_word = "row" if rows == 1 else "rows"
+                parts = [f"I found {rows} matching {row_word}."]
+            else:
+                parts = ["I ran the query successfully."]
+
+            filters = self._format_applied_filters(metadata)
+            if filters:
+                parts.append("")
+                parts.append("Filters I used:")
+                parts.extend(filters)
+
+            if df is not None:
+                columns_text = self._format_columns_included(df)
+                if columns_text:
+                    parts.append("")
+                    parts.append(f"Columns included: {columns_text}")
+
+                parts.append("")
+                parts.append("You can use Open Output to preview the results, or Download CSV to save them.")
+
+            if result.message and rows is None:
+                parts.append("")
+                parts.append(result.message)
+
+            return "\n".join(parts)
+
+        return result.message or "Done."
+
+    def _should_show_debug_messages(self) -> bool:
+        value = os.environ.get("DIAD_DEBUG_MESSAGES", "").strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
     def send_chat(self, user_text: str, model: str = "duckdb-nsql"):
         if not self.con:
             self.state.error = "Open or create a project first."
@@ -302,20 +543,31 @@ class Controller:
 
         def work():
             try:
-                self._set_busy(True, None)
+                self._set_busy(True, None, "Starting request...")
 
                 self.state.messages.append({"role": "user", "content": user_text})
-                self.on_state_changed()
+                self._set_status("Reading your data setup...")
 
                 self.router_ctx = self._build_router_context(model=model)
+                self._set_status("Choosing the right way to answer...")
                 result = route_request(user_text, self.router_ctx)
+                self._set_status("Preparing the answer...")
 
                 self.state.generated_sql = result.sql
                 self.state.export_path = None
                 self.state.result_preview = None
+                self.state.artifact_path = None
+                self.state.artifact_kind = None
+                self.state.auto_open_artifact_path = None
 
                 if result.output_path:
-                    self.state.export_path = Path(result.output_path)
+                    output_path = Path(result.output_path).resolve()
+                    if output_path.suffix.lower() in _IMAGE_EXTENSIONS:
+                        self.state.artifact_path = output_path
+                        self.state.artifact_kind = "image"
+                        self.state.auto_open_artifact_path = output_path
+                    else:
+                        self.state.export_path = output_path
 
                 if result.dataframe is not None:
                     df = result.dataframe
@@ -325,24 +577,35 @@ class Controller:
                     df.to_csv(out, index=False)
                     self.state.export_path = out
 
-                debug_message = self._format_debug_message(user_text, result)
-
-                if result.dataframe is not None:
-                    debug_message += f"\n\nExported: {self.state.export_path} ({len(result.dataframe)} rows)"
+                if self._should_show_debug_messages():
+                    assistant_message = self._format_debug_message(user_text, result)
+                    if result.dataframe is not None:
+                        assistant_message += f"\n\nExported CSV: {self.state.export_path} ({len(result.dataframe)} rows)"
+                    if self.state.artifact_path:
+                        assistant_message += f"\nChart image: {self.state.artifact_path}"
+                else:
+                    assistant_message = self._format_friendly_message(user_text, result)
 
                 self.state.messages.append(
                     {
                         "role": "assistant",
-                        "content": debug_message,
+                        "content": assistant_message,
                     }
                 )
 
                 self._set_busy(False, None)
 
             except Exception as exc:
-                msg = f"Error: {exc}"
-                if self.state.generated_sql:
-                    msg += f"\n\nSQL was:\n{self.state.generated_sql}"
+                if self._should_show_debug_messages():
+                    msg = f"Error: {exc}"
+                    if self.state.generated_sql:
+                        msg += f"\n\nSQL was:\n{self.state.generated_sql}"
+                else:
+                    msg = (
+                        "I ran into an error while answering that.\n\n"
+                        f"What happened: {exc}\n\n"
+                        "Try rewording the request, or use the Data Guide to confirm the table and column names."
+                    )
                 self.state.messages.append({"role": "assistant", "content": msg})
                 self._set_busy(False, str(exc))
 

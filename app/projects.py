@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".json"}
 
 
 def _repo_root() -> Path:
@@ -43,6 +43,7 @@ def _normalize_source_paths(source_paths: list[str | Path]) -> list[Path]:
 
     for raw in source_paths:
         p = Path(raw).expanduser().resolve()
+
         if p in seen:
             continue
         seen.add(p)
@@ -57,7 +58,7 @@ def _normalize_source_paths(source_paths: list[str | Path]) -> list[Path]:
         normalized.append(p)
 
     if not normalized:
-        raise ValueError("Select at least one CSV or XLSX file.")
+        raise ValueError("Select at least one CSV, XLSX, or JSON file.")
 
     return normalized
 
@@ -101,6 +102,7 @@ def _unique_destination(files_dir: Path, filename: str) -> Path:
 def load_project_metadata(project_dir: str | Path) -> dict[str, Any]:
     project_dir = Path(project_dir)
     meta_path = _project_json_path(project_dir)
+
     if not meta_path.exists():
         raise FileNotFoundError(f"Missing project metadata: {meta_path}")
 
@@ -122,7 +124,7 @@ def get_project_file_paths(project_dir: str | Path) -> list[Path]:
 
     for rel_name in metadata.get("files", []):
         p = (files_dir / rel_name).resolve()
-        if p.exists() and p.is_file() and p not in seen:
+        if p.exists() and p.is_file() and p.suffix.lower() in ALLOWED_EXTENSIONS and p not in seen:
             paths.append(p)
             seen.add(p)
 
@@ -193,6 +195,7 @@ def create_project(project_name: str, source_paths: list[str | Path]) -> Path:
         "files": stored_files,
     }
     _write_json(_project_json_path(project_dir), metadata)
+
     return project_dir
 
 
@@ -205,7 +208,6 @@ def add_files_to_project(project_dir: str | Path, source_paths: list[str | Path]
     files_dir.mkdir(parents=True, exist_ok=True)
 
     stored_files = list(metadata.get("files", []))
-
     for src in files:
         dest = _unique_destination(files_dir, src.name)
         shutil.copy2(src, dest)
@@ -213,4 +215,22 @@ def add_files_to_project(project_dir: str | Path, source_paths: list[str | Path]
 
     metadata["files"] = stored_files
     _write_json(_project_json_path(project_dir), metadata)
+
     return project_dir
+
+def delete_project(project_dir: str | Path) -> None:
+    """Delete a DIAD project folder from the local projects directory."""
+    root = get_projects_root().resolve()
+    target = Path(project_dir).expanduser().resolve()
+
+    if target == root:
+        raise ValueError("Cannot delete the projects root folder.")
+    if root not in target.parents:
+        raise ValueError(f"Refusing to delete a folder outside the DIAD projects directory: {target}")
+    if not target.exists():
+        raise FileNotFoundError(f"Project not found: {target}")
+    if not target.is_dir():
+        raise ValueError(f"Project path is not a folder: {target}")
+
+    shutil.rmtree(target)
+

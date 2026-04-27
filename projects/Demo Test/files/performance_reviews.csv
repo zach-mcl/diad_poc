@@ -1,0 +1,21 @@
+employee_id,review_cycle,rating,goal_attainment,promotion_eligible,manager_id
+E1000,2024-H2,4,Exceeds,Yes,M211
+E1001,2024-H2,2,Below,No,M207
+E1002,2024-H2,3,Exceeds,Under Review,M202
+E1003,2024-H2,4,Exceeds,Under Review,M207
+E1004,2024-H2,4,Exceeds,Yes,M201
+E1005,2024-H2,4,Meets,Under Review,M206
+E1006,2024-H2,4,Meets,Under Review,M203
+E1007,2024-H2,5,Exceeds,Under Review,M205
+E1008,2024-H2,3,Meets,Yes,M214
+E1009,2024-H2,3,Exceeds,No,M201
+E1010,2024-H2,2,Below,No,M205
+E1011,2024-H2,4,Exceeds,Under Review,M201
+E1012,2024-H2,5,Exceeds,Yes,M207
+E1013,2024-H2,3,Below,Under Review,M214
+E1014,2024-H2,4,Meets,Yes,M202
+E1015,2024-H2,4,Exceeds,Under Review,M200
+E1016,2024-H2,5,Meets,Yes,M203
+E1017,2024-H2,4,Exceeds,Yes,M208
+E1018,2024-H2,2,Below,No,M208
+E1019,2024-H2,4,Exceeds,Yes,M213
