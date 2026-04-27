@@ -41,7 +41,6 @@ def load_csvs(con: duckdb.DuckDBPyConnection, csv_paths: list[Path]) -> list[str
         table_names.append(t)
     return table_names
 
-#TODO load_xlsx
 #load xlsx files function -jm
 def load_xlsx(con: duckdb.DuckDBPyConnection, xlsx_paths: list[Path]) -> list[str]:
     table_names: list[str] = []
@@ -52,6 +51,17 @@ def load_xlsx(con: duckdb.DuckDBPyConnection, xlsx_paths: list[Path]) -> list[st
         con.execute(f'CREATE OR REPLACE TABLE "{t}" AS SELECT * FROM df')
         table_names.append(t)
     return table_names
+
+def load_json(con: duckdb.DuckDBPyConnection, json_paths: list[Path]) -> list[str]:
+    table_names: list[str] = []
+    for p in json_paths:
+        t = _safe_table_name(p.name)
+        con.execute(f'CREATE OR REPLACE TABLE "{t}" AS SELECT * FROM read_json_auto(?)', [str(p)],)
+        table_names.append(t)
+    return table_names
+    #hopefully duckdbs auto read json will make this stay simple
+    
+
 
 
 

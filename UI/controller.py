@@ -14,6 +14,11 @@ try:
 except ImportError:
     load_xlsx = None
 
+try:
+    from app.db import load_json
+except ImportError:
+    load_json = None
+
 from app.router import route_request
 from app.router_types import RouterContext
 from app.sql_flow import format_categorical_text
@@ -67,6 +72,7 @@ class Controller:
 
         source_files = [str(p) for p in getattr(self.state, "csv_files", [])]
         source_files.extend(str(p) for p in getattr(self.state, "xlsx_files", []))
+        source_files.extend(str(p) for p in getattr(self.state, "json_files", []))
 
         return RouterContext(
             con=self.con,
@@ -86,9 +92,10 @@ class Controller:
 
         csvs = sorted([p for p in file_paths if p.suffix.lower() == ".csv"])
         xlsxs = sorted([p for p in file_paths if p.suffix.lower() == ".xlsx"])
+        jsons = sorted([p for p in file_paths if p.suffix.lower() == ".json"])
 
-        if not csvs and not xlsxs:
-            raise RuntimeError(f"No CSV or XLSX files found in project: {metadata.get('name', project_dir.name)}")
+        if not csvs and not xlsxs and not jsons:
+            raise RuntimeError(f"No CSV, XLSX, or JSON files found in project: {metadata.get('name', project_dir.name)}")
 
         self._close_connection()
         self.con = connect()
@@ -105,6 +112,13 @@ class Controller:
             else:
                 tables.extend(load_xlsx(self.con, xlsxs))
 
+        skipped_json = False
+        if jsons:
+            if load_json is None:
+                skipped_json = True
+            else:
+                tables.extend(load_json(self.con, jsons))
+
         schema_map = get_schema_map(self.con)
         categorical_index = build_categorical_index(
             self.con,
@@ -116,6 +130,7 @@ class Controller:
         self.state.data_folder = project_dir
         self.state.csv_files = csvs
         self.state.xlsx_files = xlsxs
+        self.state.json_files = jsons
         self.state.tables = tables
         self.state.schema_map = schema_map
         self.state.categorical_index = categorical_index
@@ -134,14 +149,18 @@ class Controller:
         intro_lines = [
             f"Loaded project: {self.state.current_project_name}",
             f"Project path: {project_dir}",
-            f"Files: {len(csvs) + len(xlsxs)}",
+            f"Files: {len(csvs) + len(xlsxs) + len(jsons)}",
             f"Tables: {', '.join(tables) if tables else '(none)'}",
             f"CSV files: {len(csvs)}",
             f"XLSX files: {len(xlsxs)}",
+            f"JSON files: {len(jsons)}",
         ]
 
         if skipped_xlsx:
             intro_lines.append("Warning: XLSX files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.")
+
+        if skipped_json:
+            intro_lines.append("Warning: JSON files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.")
 
         self.state.messages = [
             {

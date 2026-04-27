@@ -8,6 +8,7 @@ class AppState:
     data_folder: Path | None = None
     csv_files: list[Path] = field(default_factory=list)
     xlsx_files: list[Path] = field(default_factory=list)
+    json_files: list[Path] = field(default_factory=list)
 
     tables: list[str] = field(default_factory=list)
     schema_map: dict[str, dict[str, str]] = field(default_factory=dict)

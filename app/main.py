@@ -10,6 +10,7 @@ from app.db import (
     connect,
     load_csvs,
     load_xlsx, #added load_xlsx -jm
+    load_json,
     get_schema_text,
     get_schema_map,
     build_categorical_index,
@@ -18,12 +19,11 @@ from app.db import (
 from app.llm import nl_to_sql
 from app.validate import strip_code_fences, sanitize_sql, is_select_only
 
-#TODO - Convert below to find csvs and xlsx
 # changed find_csvs to find data and added .xlsx to bottom -jm
 def find_data(folder: Path) -> list[Path]:
     if not folder.exists() or not folder.is_dir():
         raise FileNotFoundError(f"Folder not found: {folder}")
-    return sorted([p for p in folder.iterdir() if p.suffix.lower() in (".csv", ".xlsx")])
+    return sorted([p for p in folder.iterdir() if p.suffix.lower() in (".csv", ".xlsx", ".json")])
 
 
 
@@ -276,13 +276,18 @@ def main() -> int:
     #changed csvs to Supported_Files -jm
     Supported_Files = find_data(folder)
     if not Supported_Files:
-        print(f"No CSV files found in {folder}")
+        print(f"No CSV, XLSX, or JSON files found in {folder}")
         return 1
     csvs = [p for p in Supported_Files if p.suffix.lower() == ".csv"]
     xlsx = [p for p in Supported_Files if p.suffix.lower() == ".xlsx"]
+    jsons = [p for p in Supported_Files if p.suffix.lower() == ".json"]
 
     con = connect()
     tables = load_csvs(con, csvs)
+    if xlsx:
+        tables += load_xlsx(con, xlsx)
+    if jsons:
+        tables += load_json(con, jsons)
 
     print("\nLoaded tables:")
     for t in tables:

@@ -14,7 +14,7 @@ from UI.state import AppState
 
 
 _ALLOWED_FILE_TYPES = [
-    ("Data files", "*.csv *.xlsx"),
+    ("Data files", "*.csv *.xlsx *.json"),
     ("CSV files", "*.csv"),
     ("Excel files", "*.xlsx"),
 ]
@@ -567,7 +567,7 @@ class UploadPage(ctk.CTkFrame):
             p = Path(raw).expanduser().resolve()
             if not p.exists() or not p.is_file():
                 continue
-            if p.suffix.lower() not in {".csv", ".xlsx"}:
+            if p.suffix.lower() not in {".csv", ".xlsx", ".json"}:
                 continue
             if p.resolve() in existing:
                 continue
@@ -1286,7 +1286,7 @@ class MainPage(ctk.CTkFrame):
         for child in self.files_scroll.winfo_children():
             child.destroy()
 
-        files = [*self.state.csv_files, *self.state.xlsx_files]
+        files = [*self.state.csv_files, *self.state.xlsx_files, *self.state.json_files]
         self.file_count_label_main.configure(text=f"{len(files)} loaded")
 
         if not files:
