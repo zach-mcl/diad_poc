@@ -254,6 +254,9 @@ class Controller:
             intro_lines.append("Heads up:")
             intro_lines.extend(f"- {warning}" for warning in warnings)
 
+        if skipped_json:
+            intro_lines.append("Warning: JSON files were found, but app.db.load_xlsx does not exist yet. Those files were skipped.")
+
         self.state.messages = [
             {
                 "role": "assistant",
