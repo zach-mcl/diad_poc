@@ -47,6 +47,7 @@ def app_font(size=14, weight="normal"):
     return ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
 
 
+
 def glass_panel(parent, **kwargs):
     defaults = {
         "fg_color": SURFACE,
@@ -62,7 +63,11 @@ def section_title(parent, text: str):
     return ctk.CTkLabel(
         parent,
         text=text,
+<<<<<<< Updated upstream
         font=app_font(18, "bold"),
+=======
+        font=ctk.CTkFont(family="Courier New", size=18, weight="bold"),
+>>>>>>> Stashed changes
         text_color=TEXT,
     )
 
@@ -71,13 +76,65 @@ def section_subtitle(parent, text: str, wraplength: int = 320):
     return ctk.CTkLabel(
         parent,
         text=text,
+<<<<<<< Updated upstream
         font=app_font(16, "bold"),
+=======
+        font=ctk.CTkFont(family="Courier New", size=13),
+>>>>>>> Stashed changes
         text_color=MUTED,
         wraplength=wraplength,
         justify="left",
     )
 
 
+<<<<<<< Updated upstream
+=======
+def small_button(parent, text: str, command=None, width: int | None = None):
+    return ctk.CTkButton(
+        parent,
+        text=text,
+        width=width or 120,
+        height=34,
+        corner_radius=10,
+        fg_color=SURFACE_3,
+        hover_color=SURFACE_4,
+        text_color=TEXT,
+        command=command,
+        font=ctk.CTkFont(family="Courier New", size=12, weight="bold")
+    )
+
+
+def primary_button(parent, text: str, command=None, width: int | None = None):
+    return ctk.CTkButton(
+        parent,
+        text=text,
+        width=width or 120,
+        height=40,
+        corner_radius=12,
+        fg_color=ACCENT,
+        hover_color=ACCENT_HOVER,
+        text_color=ACCENT_TEXT,
+        command=command,
+        font=ctk.CTkFont(family="Courier New", size=12, weight="bold")
+    )
+
+
+def danger_button(parent, text: str, command=None, width: int | None = None):
+    return ctk.CTkButton(
+        parent,
+        text=text,
+        width=width or 120,
+        height=40,
+        corner_radius=12,
+        fg_color=DANGER,
+        hover_color=DANGER_HOVER,
+        text_color=ACCENT_TEXT,
+        command=command,
+        font=ctk.CTkFont(family="Courier New", size=12, weight="bold")
+    )
+
+
+>>>>>>> Stashed changes
 class ToolTip:
     def __init__(self, widget, text: str):
         self.widget = widget
@@ -107,7 +164,11 @@ class ToolTip:
             justify="left",
             padx=8,
             pady=6,
+<<<<<<< Updated upstream
             font=app_font(12, "normal"),
+=======
+            font=("Courier New", 10),
+>>>>>>> Stashed changes
         )
         label.pack()
 
@@ -128,7 +189,11 @@ def add_corner_help(parent, text: str, x: int = -10, y: int = 10):
     badge = tk.Label(
         parent,
         text="?",
+<<<<<<< Updated upstream
         font=app_font(20, "bold"),
+=======
+        font=("Courier New", 20, "bold"),
+>>>>>>> Stashed changes
         fg=ACCENT_HOVER,
         bg=parent_bg,
         cursor="question_arrow",
@@ -153,7 +218,23 @@ class TkApp(DnDCTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
+<<<<<<< Updated upstream
         super().__init__()
+=======
+        default_font = tkfont.nametofont("TkDefaultFont")
+        default_font.configure(family="Courier New", size=13)
+
+        text_font = tkfont.nametofont("TkTextFont")
+        text_font.configure(family="Courier New", size=13)
+
+        fixed_font = tkfont.nametofont("TkFixedFont")
+        fixed_font.configure(family="Courier New", size=13)
+
+        self.APP_FONT = ctk.CTkFont(family="Courier New", size=13)
+        self.APP_FONT_BOLD = ctk.CTkFont(family="Courier New", size=13, weight="bold")
+        self.APP_FONT_SMALL = ctk.CTkFont(family="Courier New", size=11)
+
+>>>>>>> Stashed changes
         self.title("DIAD")
         self.geometry("1440x880")
         self.minsize(1180, 760)
@@ -205,14 +286,23 @@ class TkApp(DnDCTk):
             rowheight=30,
             bordercolor=BORDER,
             borderwidth=0,
+            font=("Courier New", 13) 
         )
+<<<<<<< Updated upstream
         style.map("Dark.Treeview", background=[("selected", SURFACE_4)])
+=======
+
+        style.map("Dark.Treeview", background=[("selected", ACCENT_SOFT)])
+
+>>>>>>> Stashed changes
         style.configure(
             "Dark.Treeview.Heading",
             background=SURFACE,
             foreground=TEXT,
             relief="flat",
+            font=("Courier New", 13, "bold") 
         )
+
         style.map("Dark.Treeview.Heading", background=[("active", SURFACE_3)])
 
     def show_page(self, page_class):
@@ -241,14 +331,22 @@ class UploadPage(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text="DIAD",
+<<<<<<< Updated upstream
             font=app_font(30, "bold"),
+=======
+            font=self.app.APP_FONT,
+>>>>>>> Stashed changes
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w")
 
         ctk.CTkLabel(
             header,
             text="Create a project, add your files, and start chatting with your data.",
+<<<<<<< Updated upstream
             font=app_font(16, "normal"),
+=======
+            font=self.app.APP_FONT,
+>>>>>>> Stashed changes
             text_color=MUTED,
         ).grid(row=1, column=0, sticky="w", pady=(6, 0))
 
@@ -295,7 +393,12 @@ class UploadPage(ctk.CTkFrame):
             font=app_font(12, "normal"),
             placeholder_text_color=MUTED,
         )
+<<<<<<< Updated upstream
         self.project_name_entry.grid(row=3, column=0, sticky="ew", padx=18, pady=(8, 14))
+=======
+        self.project_name_entry.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 12))
+        self.project_name_entry.configure(font=ctk.CTkFont(family='Courier New', size=13))
+>>>>>>> Stashed changes
 
         files_toolbar = ctk.CTkFrame(self.create_frame, fg_color="transparent")
         files_toolbar.grid(row=4, column=0, sticky="ew", padx=18)
@@ -516,9 +619,20 @@ class UploadPage(ctk.CTkFrame):
                 row,
                 text=p.name,
                 text_color=TEXT,
+<<<<<<< Updated upstream
                 anchor="w",
                 font=app_font(12, "normal")
             ).pack(fill="x", padx=(0, 12), pady=10)
+=======
+                font=self.app.APP_FONT,
+            ).grid(row=0, column=0, rowspan=2, padx=10, pady=10)
+            ctk.CTkLabel(card, text=path.name, text_color=TEXT, anchor="w").grid(
+                row=0, column=1, sticky="ew", padx=(0, 10), pady=(10, 0)
+            )
+            ctk.CTkLabel(card, text=str(path.parent), text_color=MUTED_2, anchor="w").grid(
+                row=1, column=1, sticky="ew", padx=(0, 10), pady=(0, 10)
+            )
+>>>>>>> Stashed changes
 
     def _render_projects(self):
         for child in self.projects_scroll.winfo_children():
@@ -573,7 +687,11 @@ class UploadPage(ctk.CTkFrame):
             name_label = ctk.CTkLabel(
                 card,
                 text=item.get("name", "(unnamed)"),
+<<<<<<< Updated upstream
                 font=app_font(12, "normal"),
+=======
+                font=self.app.APP_FONT,
+>>>>>>> Stashed changes
                 text_color=TEXT,
                 anchor="w",
             )
@@ -588,7 +706,43 @@ class UploadPage(ctk.CTkFrame):
             )
             meta_label.grid(row=1, column=1, sticky="ew", pady=(0, 10), padx=(0, 10))
 
+<<<<<<< Updated upstream
             self._bind_project_card([card, name_label, meta_label], path)
+=======
+            delete_btn = ctk.CTkButton(
+                card,
+                text="Delete",
+                width=72,
+                height=28,
+                corner_radius=10,
+                fg_color=DANGER,
+                hover_color=DANGER_HOVER,
+                text_color=ACCENT_TEXT,
+                font=self.app.APP_FONT,
+                command=lambda p=path: self.on_delete_project(p),
+            )
+            delete_btn.grid(row=0, column=2, rowspan=2, sticky="e", padx=(0, 10), pady=10)
+
+            self._bind_project_card([card, radio, name_label, meta_label], path)
+
+    def _bind_project_card(self, widgets, path: str):
+        for widget in widgets:
+            try:
+                widget.configure(cursor="hand2")
+            except Exception:
+                pass
+            widget.bind("<Button-1>", lambda _e, p=path: self._select_project(p), add="+")
+            widget.bind("<Double-Button-1>", lambda _e, p=path: self._open_project_path(p), add="+")
+
+    def _select_project(self, path: str):
+        self.selected_project_var.set(path)
+        self.render()
+
+    def _open_project_path(self, path: str):
+        if path:
+            self.app.controller.open_project(path)
+            self.after(120, self.check_transition)
+>>>>>>> Stashed changes
 
     def _add_pending_files(self, raw_paths: list[str | Path]):
         existing = {p.resolve() for p in self.pending_files}
@@ -726,7 +880,11 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             self.sidebar,
             text="Project",
+<<<<<<< Updated upstream
             font=app_font(12, "normal"),
+=======
+            font=self.app.APP_FONT,
+>>>>>>> Stashed changes
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 6))
 
@@ -837,7 +995,11 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             files_header,
             text="Files",
+<<<<<<< Updated upstream
             font=app_font(12, "normal"),
+=======
+            font=self.app.APP_FONT,
+>>>>>>> Stashed changes
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w")
 
@@ -886,8 +1048,13 @@ class MainPage(ctk.CTkFrame):
 
         self.title_label = ctk.CTkLabel(
             title_wrap,
+<<<<<<< Updated upstream
             text="Ask a question about your data",
             font=app_font(20, "bold"),
+=======
+            text="Chat with your data",
+            font=self.app.APP_FONT,
+>>>>>>> Stashed changes
             text_color=TEXT,
         )
         self.title_label.grid(row=0, column=0, sticky="w")
@@ -958,6 +1125,7 @@ class MainPage(ctk.CTkFrame):
             placeholder_text_color=MUTED,
             font=app_font(12, "normal")
         )
+        self.chat_entry.configure(font=ctk.CTkFont(family='Courier New', size=13))
         self.chat_entry.grid(row=0, column=0, sticky="ew")
         self.chat_entry.bind("<Return>", lambda e: self.on_send())
 
@@ -1011,6 +1179,7 @@ class MainPage(ctk.CTkFrame):
             placeholder_text_color=MUTED,
             font=app_font(12, "normal")
         )
+        self.schema_search.configure(font=ctk.CTkFont(family='Courier New', size=13))
         self.schema_search.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 10))
 
         tree_wrap = glass_panel(self.guide_card, fg_color=SURFACE_2, corner_radius=14)
@@ -1033,7 +1202,11 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             detail_header,
             text="Selected item",
+<<<<<<< Updated upstream
             font=app_font(12, "normal"),
+=======
+            font=self.app.APP_FONT,
+>>>>>>> Stashed changes
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w")
 
@@ -1045,7 +1218,34 @@ class MainPage(ctk.CTkFrame):
         )
         self.schema_summary_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
+<<<<<<< Updated upstream
         self.schema_details = ctk.CTkTextbox(
+=======
+        copy_row = ctk.CTkFrame(self.guide_card, fg_color="transparent")
+        copy_row.grid(row=5, column=0, sticky="ew", padx=16, pady=(0, 8))
+        copy_row.grid_columnconfigure((0, 1), weight=1)
+        self.btn_copy_table = small_button(copy_row, "Copy table", self.copy_selected_table, width=120)
+        self.btn_copy_table.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.btn_copy_column = small_button(copy_row, "Copy column", self.copy_selected_column, width=120)
+        self.btn_copy_column.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        self._update_schema_copy_buttons()
+
+        self.schema_chip_area = ctk.CTkFrame(self.guide_card, fg_color="transparent")
+        self.schema_chip_area.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 8))
+        self.schema_chip_area.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.schema_chip_area,
+            text="Quick insert",
+            font=self.app.APP_FONT,
+            text_color=MUTED_2,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        self.schema_chip_frame = ctk.CTkFrame(self.schema_chip_area, fg_color="transparent")
+        self.schema_chip_frame.grid(row=1, column=0, sticky="ew")
+        self.schema_chip_frame.grid_columnconfigure((0, 1), weight=1)
+
+        self.schema_detail = ctk.CTkTextbox(
+>>>>>>> Stashed changes
             self.guide_card,
             fg_color=SURFACE_2,
             border_width=1,
@@ -1065,6 +1265,11 @@ class MainPage(ctk.CTkFrame):
             x=-6,
             y=6,
         )
+<<<<<<< Updated upstream
+=======
+        self.schema_detail.grid(row=7, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        self.schema_detail.configure(state="disabled",font=self.app.APP_FONT)
+>>>>>>> Stashed changes
 
     def _enable_drop_target(self, widget, callback):
         try:
@@ -1077,6 +1282,7 @@ class MainPage(ctk.CTkFrame):
         try:
             items = self.app.tk.splitlist(event.data)
         except Exception:
+<<<<<<< Updated upstream
             raw = str(getattr(event, "data", "")).strip()
             items = [raw] if raw else []
 
@@ -1116,6 +1322,698 @@ class MainPage(ctk.CTkFrame):
             if uniq:
                 cats_lines.append(f'"{t}"."{c}": {", ".join(uniq[:25])}{" ..." if len(uniq) > 25 else ""}')
         return "\n".join(cats_lines).strip()
+=======
+            return []
+
+    def _make_schema_payload(
+        self,
+        table: str,
+        column: str | None = None,
+        value: str | None = None,
+        kind: str | None = None,
+    ) -> dict[str, str]:
+        table = str(table or "")
+        column = str(column or "")
+        value = str(value or "")
+        kind = kind or ("value" if value and column else "column" if column else "table")
+
+        insert_text = self.controller.format_schema_insert_text(
+            table=table,
+            column=column or None,
+            value=value or None,
+        )
+        search_text = self.controller.format_schema_search_text(
+            table=table,
+            column=column or None,
+            value=value or None,
+        )
+
+        if kind == "value":
+            display = f'{column} is "{value}"'
+        elif kind == "column":
+            display = column
+        else:
+            display = table
+
+        return {
+            "kind": kind,
+            "table": table,
+            "column": column,
+            "value": value,
+            "insert_text": insert_text,
+            "search_text": search_text,
+            "display": display,
+        }
+
+    def _schema_payload_from_tree_item(self, item_id: str) -> dict[str, str] | None:
+        if not item_id:
+            return None
+
+        values = list(self.schema_tree.item(item_id, "values") or [])
+        item_text = str(self.schema_tree.item(item_id, "text") or "")
+        if not values and not item_text:
+            return None
+
+        table = str(values[0]) if len(values) > 0 and values[0] else item_text
+        column = str(values[1]) if len(values) > 1 and values[1] else ""
+        kind = str(values[2]) if len(values) > 2 and values[2] else ("column" if column else "table")
+        value = str(values[3]) if len(values) > 3 and values[3] else ""
+
+        return self._make_schema_payload(
+            table=table,
+            column=column or None,
+            value=value or None,
+            kind=kind,
+        )
+
+    def _schema_payload_from_event(self, event) -> dict[str, str] | None:
+        item_id = self.schema_tree.identify_row(event.y)
+        return self._schema_payload_from_tree_item(item_id)
+
+    def _clear_schema_chips(self):
+        if not hasattr(self, "schema_chip_frame"):
+            return
+        clear_children(self.schema_chip_frame)
+
+    def _bind_schema_chip(self, chip, payload: dict[str, str]):
+        try:
+            chip.configure(cursor="hand2")
+        except Exception:
+            pass
+        chip.bind("<ButtonPress-1>", lambda event, p=payload: self.on_schema_chip_press(event, p), add="+")
+        chip.bind("<B1-Motion>", self.on_schema_chip_motion, add="+")
+        chip.bind("<ButtonRelease-1>", self.on_schema_chip_release, add="+")
+
+    def _render_schema_chips(self, payloads: list[dict[str, str]]):
+        self._clear_schema_chips()
+        if not hasattr(self, "schema_chip_frame"):
+            return
+
+        if not payloads:
+            chip = ctk.CTkLabel(
+                self.schema_chip_frame,
+                text="Select an item to show draggable chips.",
+                text_color=MUTED_2,
+                anchor="w",
+            )
+            chip.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+            return
+
+        for idx, payload in enumerate(payloads[:10]):
+            label_text = payload.get("display", "item")
+            if len(label_text) > 28:
+                label_text = label_text[:25] + "..."
+
+            chip = ctk.CTkFrame(
+                self.schema_chip_frame,
+                fg_color=ACCENT_SOFT,
+                border_width=1,
+                border_color=BORDER_SOFT,
+                corner_radius=18,
+            )
+            chip.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=(0, 6), pady=(0, 6))
+
+            label = ctk.CTkLabel(
+                chip,
+                text=label_text,
+                text_color=TEXT,
+                font=self.app.APP_FONT,
+                anchor="center",
+                wraplength=125,
+            )
+            label.pack(fill="both", expand=True, padx=10, pady=5)
+
+            self._bind_schema_chip(chip, payload)
+            self._bind_schema_chip(label, payload)
+
+    def _start_schema_drag(self, payload: dict[str, str] | None, event):
+        self.drag_payload = payload
+        self._drag_start_xy = (event.x_root, event.y_root)
+        self._drag_started = False
+
+    def on_schema_chip_press(self, event, payload: dict[str, str]):
+        self._start_schema_drag(payload, event)
+        return "break"
+
+    def on_schema_chip_motion(self, event):
+        return self.on_schema_tree_motion(event)
+
+    def on_schema_chip_release(self, event):
+        if not self.drag_payload:
+            return "break"
+
+        if not self._drag_started:
+            payload = self.drag_payload
+            self._insert_text_into_chat_entry(payload.get("insert_text", ""))
+            self.status.configure(text=f"Added: {payload.get('display', 'item')}", text_color=SUCCESS)
+            self._reset_schema_drag()
+            return "break"
+
+        return self.on_schema_tree_release(event)
+
+    def _insert_text_into_chat_entry(self, text: str):
+        text = str(text).strip()
+        if not text:
+            return
+
+        current = self.chat_entry.get()
+        spacer = "" if not current or current.endswith((" ", "\n")) else " "
+        self.chat_entry.insert(tk.END, f"{spacer}{text}")
+        self.chat_entry.focus_set()
+
+    def _set_schema_search_text(self, text: str):
+        text = str(text).strip()
+        if not text:
+            return
+
+        self.schema_search.delete(0, tk.END)
+        self.schema_search.insert(0, text)
+        self.schema_search.focus_set()
+
+    def _widget_is_or_contains(self, widget, possible_parent) -> bool:
+        while widget is not None:
+            if widget == possible_parent:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def _drop_target_for_pointer(self, event) -> str | None:
+        target = self.winfo_containing(event.x_root, event.y_root)
+        if target is None:
+            return None
+        if self._widget_is_or_contains(target, self.chat_entry):
+            return "chat"
+        if self._widget_is_or_contains(target, self.schema_search):
+            return "schema_search"
+        return None
+
+    def _create_drag_ghost(self, text: str, x: int, y: int):
+        self._destroy_drag_ghost()
+        self._drag_ghost = tk.Toplevel(self)
+        self._drag_ghost.wm_overrideredirect(True)
+        self._drag_ghost.wm_attributes("-topmost", True)
+        self._drag_ghost.configure(bg=APP_BG)
+
+        bubble = ctk.CTkFrame(
+            self._drag_ghost,
+            fg_color=ACCENT,
+            border_width=1,
+            border_color=ACCENT_HOVER,
+            corner_radius=18,
+        )
+        bubble.pack()
+        ctk.CTkLabel(
+            bubble,
+            text=text,
+            text_color=ACCENT_TEXT,
+            font=self.app.APP_FONT,
+        ).pack(padx=12, pady=6)
+        self._move_drag_ghost(x, y)
+
+    def _move_drag_ghost(self, x: int, y: int):
+        if self._drag_ghost is not None:
+            self._drag_ghost.wm_geometry(f"+{x + 12}+{y + 12}")
+
+    def _destroy_drag_ghost(self):
+        if self._drag_ghost is not None:
+            try:
+                self._drag_ghost.destroy()
+            except Exception:
+                pass
+        self._drag_ghost = None
+
+    def _reset_schema_drag(self):
+        self._destroy_drag_ghost()
+        self.drag_payload = None
+        self._drag_start_xy = None
+        self._drag_started = False
+
+    def on_schema_tree_press(self, event):
+        self._start_schema_drag(self._schema_payload_from_event(event), event)
+
+    def on_schema_tree_motion(self, event):
+        if not self.drag_payload or not self._drag_start_xy:
+            return
+
+        start_x, start_y = self._drag_start_xy
+        distance = abs(event.x_root - start_x) + abs(event.y_root - start_y)
+        if not self._drag_started and distance < 8:
+            return
+
+        if not self._drag_started:
+            self._drag_started = True
+            self._create_drag_ghost(self.drag_payload.get("display", "item"), event.x_root, event.y_root)
+            self.status.configure(text="Drop into the chat box, or drop into Data Guide search to filter.", text_color=WARNING)
+        else:
+            self._move_drag_ghost(event.x_root, event.y_root)
+
+    def on_schema_tree_release(self, event):
+        if not self.drag_payload:
+            return
+
+        if not self._drag_started:
+            self._reset_schema_drag()
+            return
+
+        target = self._drop_target_for_pointer(event)
+        if target == "chat":
+            self._insert_text_into_chat_entry(self.drag_payload.get("insert_text", ""))
+            self.status.configure(text=f"Added: {self.drag_payload.get('display', 'item')}", text_color=SUCCESS)
+        elif target == "schema_search":
+            self._set_schema_search_text(self.drag_payload.get("search_text", ""))
+            self.status.configure(text=f"Searching: {self.drag_payload.get('search_text', '')}", text_color=SUCCESS)
+        else:
+            self.status.configure(text="Drag canceled", text_color=MUTED)
+
+        self._reset_schema_drag()
+        return "break"
+
+    def on_schema_tree_double_click(self, event):
+        payload = self._schema_payload_from_event(event)
+        if not payload:
+            return
+        self._insert_text_into_chat_entry(payload.get("insert_text", ""))
+        self.status.configure(text=f"Added: {payload.get('display', 'item')}", text_color=SUCCESS)
+        return "break"
+
+    def fill_suggestion(self, text: str):
+        self.chat_entry.delete(0, tk.END)
+        self.chat_entry.insert(0, text)
+        self.chat_entry.focus_set()
+
+    def _table_column_counts(self) -> tuple[int, int]:
+        table_count = len(self.state.schema_map)
+        column_count = sum(len(cols) for cols in self.state.schema_map.values())
+        return table_count, column_count
+
+    def _format_file_card_meta(self, path: Path) -> str:
+        ext = path.suffix.upper().replace(".", "") or "FILE"
+        size_text = "unknown size"
+        try:
+            size = path.stat().st_size
+            if size >= 1024 * 1024:
+                size_text = f"{size / (1024 * 1024):.1f} MB"
+            elif size >= 1024:
+                size_text = f"{size / 1024:.1f} KB"
+            else:
+                size_text = f"{size} B"
+        except Exception:
+            pass
+        return f"{ext} • {size_text}"
+
+    def _guess_table_for_file(self, path: Path) -> str | None:
+        stem = path.stem.lower().replace(" ", "_").replace("-", "_")
+        for table in self.state.tables:
+            if stem in table.lower() or table.lower() in stem:
+                return table
+        return None
+
+    def _render_files(self):
+        clear_children(self.files_scroll)
+
+        files = list(self.state.csv_files) + list(self.state.xlsx_files) + list(getattr(self.state, "json_files", []))
+        self.file_count_label_main.configure(text=f"{len(files)} loaded")
+
+        if not files:
+            ctk.CTkLabel(self.files_scroll, text="No files loaded.", text_color=MUTED).pack(anchor="w", padx=8, pady=8)
+            return
+
+        seen_names: dict[str, int] = {}
+        for path in files:
+            seen_names[path.name] = seen_names.get(path.name, 0) + 1
+
+        for path in files:
+            duplicate = seen_names.get(path.name, 0) > 1
+            card = ctk.CTkFrame(self.files_scroll, fg_color=SURFACE_3, corner_radius=12)
+            card.pack(fill="x", padx=4, pady=5)
+            card.grid_columnconfigure(1, weight=1)
+
+            badge_text = path.suffix.replace(".", "").upper() or "FILE"
+            badge = ctk.CTkLabel(
+                card,
+                text=badge_text,
+                width=54,
+                height=26,
+                fg_color=ACCENT_SOFT,
+                corner_radius=8,
+                text_color=TEXT,
+                font=self.app.APP_FONT,
+            )
+            badge.grid(row=0, column=0, rowspan=3, padx=10, pady=8)
+
+            name_label = ctk.CTkLabel(card, text=path.name, text_color=TEXT, anchor="w", wraplength=160)
+            name_label.grid(row=0, column=1, sticky="ew", pady=(8, 0), padx=(0, 10))
+
+            table = self._guess_table_for_file(path)
+            meta = self._format_file_card_meta(path)
+            if table:
+                meta += f" • table: {table}"
+            if duplicate:
+                meta += " • duplicate name"
+
+            meta_label = ctk.CTkLabel(
+                card,
+                text=meta,
+                text_color=WARNING if duplicate else MUTED_2,
+                anchor="w",
+                wraplength=165,
+            )
+            meta_label.grid(row=1, column=1, sticky="ew", pady=(1, 2), padx=(0, 10))
+
+            hint_label = ctk.CTkLabel(
+                card,
+                text="Double-click to preview",
+                text_color=MUTED_2,
+                anchor="w",
+                font=self.app.APP_FONT,
+            )
+            hint_label.grid(row=2, column=1, sticky="ew", pady=(0, 8), padx=(0, 10))
+
+            self._bind_loaded_file_card([card, badge, name_label, meta_label, hint_label], path)
+
+    def _bind_loaded_file_card(self, widgets, path: Path):
+        for widget in widgets:
+            widget.bind("<Double-Button-1>", lambda _e, p=path: self.open_file_preview(p))
+            widget.bind("<Enter>", lambda _e, card=widgets[0]: card.configure(fg_color=SURFACE_4))
+            widget.bind("<Leave>", lambda _e, card=widgets[0]: card.configure(fg_color=SURFACE_3))
+            try:
+                widget.configure(cursor="hand2")
+            except Exception:
+                pass
+
+    def _render_messages(self):
+        # CTkScrollableFrame can keep an old scroll position when its children are
+        # destroyed and rebuilt. Reset first so the canvas never shows a blank
+        # lower portion while the new message bubbles are being laid out.
+        try:
+            self.chat_history._parent_canvas.yview_moveto(0.0)
+        except Exception:
+            pass
+
+        clear_children(self.chat_history)
+
+        messages = list(self.state.messages)
+        if not messages:
+            empty = ctk.CTkLabel(
+                self.chat_history,
+                text="Ask a question to get started.",
+                text_color=MUTED,
+                anchor="w",
+                justify="left",
+            )
+            empty.pack(anchor="w", padx=14, pady=14)
+            return
+
+        available_width = self.chat_card.winfo_width()
+        if available_width <= 100:
+            available_width = 760
+        bubble_wrap = max(360, min(760, int(available_width * 0.62)))
+
+        for msg in messages:
+            role = msg.get("role", "assistant")
+            content = str(msg.get("content", ""))
+            is_user = role == "user"
+
+            row = ctk.CTkFrame(self.chat_history, fg_color="transparent")
+            row.pack(fill="x", padx=10, pady=(8, 4))
+
+            bubble = ctk.CTkFrame(
+                row,
+                fg_color=ACCENT if is_user else SURFACE_3,
+                border_width=1,
+                border_color=ACCENT_HOVER if is_user else BORDER_SOFT,
+                corner_radius=18,
+            )
+            bubble.pack(
+                anchor="e" if is_user else "w",
+                padx=(92, 4) if is_user else (4, 92),
+            )
+
+            ctk.CTkLabel(
+                bubble,
+                text="You" if is_user else "DIAD",
+                text_color=ACCENT_TEXT if is_user else MUTED_2,
+                font=self.app.APP_FONT,
+                anchor="w",
+            ).pack(anchor="w", padx=13, pady=(9, 0))
+
+            ctk.CTkLabel(
+                bubble,
+                text=content,
+                text_color=ACCENT_TEXT if is_user else TEXT,
+                font=self.app.APP_FONT,
+                justify="left",
+                anchor="w",
+                wraplength=bubble_wrap,
+            ).pack(anchor="w", padx=13, pady=(3, 10))
+
+        self._scroll_chat_to_latest_message()
+
+    def _scroll_chat_to_latest_message(self):
+        """Scroll to the newest bubble after the scrollregion has settled.
+
+        Without this delay, CustomTkinter sometimes keeps the old scrollregion
+        from the previous render, which creates the blank black area at the
+        bottom of the chat until you manually scroll up.
+        """
+
+        def do_scroll():
+            try:
+                self.chat_history.update_idletasks()
+                canvas = self.chat_history._parent_canvas
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                canvas.yview_moveto(1.0)
+            except Exception:
+                pass
+
+        self.after_idle(do_scroll)
+        self.after(80, do_scroll)
+        self.after(180, do_scroll)
+
+    def refresh_schema_tree(self):
+        if not hasattr(self, "schema_tree"):
+            return
+
+        query = self.schema_search_var.get().strip().lower()
+        self.schema_tree.delete(*self.schema_tree.get_children())
+
+        for table, columns in sorted(self.state.schema_map.items()):
+            table_matches = not query or query in table.lower()
+            inserted_table = False
+            table_id = ""
+
+            for column in sorted(columns.keys()):
+                values = [str(value) for value in self.state.categorical_index.get((table, column), [])]
+                matching_values = [value for value in values if query and query in value.lower()]
+                value_matches = bool(matching_values)
+                column_matches = not query or query in column.lower() or value_matches
+
+                if table_matches or column_matches:
+                    if not inserted_table:
+                        table_id = self.schema_tree.insert(
+                            "",
+                            "end",
+                            text=table,
+                            open=True,
+                            values=(table, "", "table", ""),
+                        )
+                        inserted_table = True
+
+                    column_id = self.schema_tree.insert(
+                        table_id,
+                        "end",
+                        text=column,
+                        open=bool(query and value_matches),
+                        values=(table, column, "column", ""),
+                    )
+
+                    values_to_show = matching_values if query and value_matches else values[:8]
+                    for value in values_to_show[:12]:
+                        self.schema_tree.insert(
+                            column_id,
+                            "end",
+                            text=f"↳ {value}",
+                            values=(table, column, "value", value),
+                        )
+
+        self.show_schema_details(clear_only=True)
+
+    def show_schema_details(self, clear_only: bool = False):
+        if not hasattr(self, "schema_detail"):
+            return
+
+        selected = self.schema_tree.selection()
+        if clear_only and not selected:
+            self._set_schema_detail(
+                "Select a table, column, or value to see more detail.\n\n"
+                "Tip: drag or double-click an item to add it to the chat box."
+            )
+            self.schema_summary_label.configure(text=self._schema_counts_text())
+            self.selected_schema_item = None
+            self.selected_schema_kind = None
+            self._update_schema_copy_buttons()
+            self._render_schema_chips([])
+            return
+
+        if not selected:
+            self._set_schema_detail(
+                "Select a table, column, or value to see more detail.\n\n"
+                "Tip: drag or double-click an item to add it to the chat box."
+            )
+            self.schema_summary_label.configure(text=self._schema_counts_text())
+            self.selected_schema_item = None
+            self.selected_schema_kind = None
+            self._update_schema_copy_buttons()
+            self._render_schema_chips([])
+            return
+
+        item = selected[0]
+        values = list(self.schema_tree.item(item, "values") or [])
+        table = str(values[0]) if len(values) > 0 and values[0] else self.schema_tree.item(item, "text")
+        column = str(values[1]) if len(values) > 1 and values[1] else None
+        kind = str(values[2]) if len(values) > 2 and values[2] else ("column" if column else "table")
+        value = str(values[3]) if len(values) > 3 and values[3] else None
+        self.selected_schema_item = (table, column, value if kind == "value" else None)
+        self.selected_schema_kind = kind
+        self._update_schema_copy_buttons()
+
+        if kind == "table" or column is None:
+            columns = list(self.state.schema_map.get(table, {}).keys())
+            text = [f"Table: {table}", "", f"Columns: {len(columns)}", ""]
+            text.append("Double-click or drag this table into the chat box to reference it.")
+            text.append("")
+            for col in columns:
+                text.append(f"- {col}")
+            chip_payloads = [self._make_schema_payload(table=table, kind="table")]
+            self.schema_summary_label.configure(text=f"table • {len(columns)} columns")
+            self._render_schema_chips(chip_payloads)
+        elif kind == "value" and value is not None:
+            dtype = self.state.schema_map.get(table, {}).get(column, "unknown")
+            insert_text = self.controller.format_schema_insert_text(table=table, column=column, value=value)
+            text = [
+                f"Table: {table}",
+                f"Column: {column}",
+                f"Type: {dtype}",
+                f"Value: {value}",
+                "",
+                "Double-click or drag this value into the chat box to add:",
+                insert_text,
+            ]
+            chip_payloads = [
+                self._make_schema_payload(table=table, column=column, kind="column"),
+                self._make_schema_payload(table=table, column=column, value=value, kind="value"),
+            ]
+            self.schema_summary_label.configure(text=f"value • {column}")
+            self._render_schema_chips(chip_payloads)
+        else:
+            dtype = self.state.schema_map.get(table, {}).get(column, "unknown")
+            samples = [str(value) for value in self.state.categorical_index.get((table, column), [])]
+            text = [f"Table: {table}", f"Column: {column}", f"Type: {dtype}", ""]
+            text.append("Double-click or drag this column into the chat box to reference it.")
+            text.append("")
+            if samples:
+                text.append("Sample values shown under this column in the tree:")
+                for sample in samples[:12]:
+                    text.append(f"- {sample}")
+            else:
+                text.append("No sample values available for this column.")
+            chip_payloads = [self._make_schema_payload(table=table, column=column, kind="column")]
+            chip_payloads.extend(
+                self._make_schema_payload(table=table, column=column, value=sample, kind="value")
+                for sample in samples[:7]
+            )
+            self.schema_summary_label.configure(text=f"column • {dtype}")
+            self._render_schema_chips(chip_payloads)
+
+        self._set_schema_detail("\n".join(text))
+
+    def _schema_counts_text(self) -> str:
+        table_count, column_count = self._table_column_counts()
+        return f"{table_count} tables • {column_count} columns"
+
+    def _set_schema_detail(self, text: str):
+        self.schema_detail.configure(state="normal")
+        self.schema_detail.delete("1.0", tk.END)
+        self.schema_detail.insert(tk.END, text)
+        self.schema_detail.configure(state="disabled")
+
+    def _update_schema_copy_buttons(self):
+        if not hasattr(self, "btn_copy_table") or not hasattr(self, "btn_copy_column"):
+            return
+
+        has_selection = self.selected_schema_item is not None
+        table, column, _value = self.selected_schema_item if has_selection else (None, None, None)
+
+        # Copy table can be used for any selected table/column/value because each item belongs to a table.
+        self.btn_copy_table.configure(state="normal" if table else "disabled")
+
+        # Copy column should only be clickable for real column/value selections.
+        # When a table is selected, column is None, so this stays disabled and cannot copy the table/file text by mistake.
+        column_selected = bool(column) and self.selected_schema_kind in {"column", "value"}
+        self.btn_copy_column.configure(state="normal" if column_selected else "disabled")
+
+    def copy_selected_table(self):
+        if not self.selected_schema_item:
+            self.status.configure(text="Select a table, column, or value first.", text_color=MUTED)
+            return
+        table, _column, _value = self.selected_schema_item
+        if not table:
+            self.status.configure(text="Select a table, column, or value first.", text_color=MUTED)
+            return
+        self.clipboard_clear()
+        self.clipboard_append(table)
+        self.status.configure(text=f"Copied table: {table}", text_color=SUCCESS)
+
+    def copy_selected_column(self):
+        if not self.selected_schema_item:
+            self.status.configure(text="Select a column first.", text_color=MUTED)
+            return
+        _table, column, _value = self.selected_schema_item
+        if not column or self.selected_schema_kind not in {"column", "value"}:
+            self.status.configure(text="Select a column first.", text_color=MUTED)
+            self._update_schema_copy_buttons()
+            return
+        self.clipboard_clear()
+        self.clipboard_append(column)
+        self.status.configure(text=f"Copied column: {column}", text_color=SUCCESS)
+
+    def _last_user_query(self) -> str | None:
+        for msg in reversed(self.state.messages):
+            if msg.get("role") == "user":
+                text = str(msg.get("content", "")).strip()
+                if text:
+                    return text
+        return None
+
+    def edit_last_query(self):
+        text = self._last_user_query()
+        if not text or self.state.is_busy:
+            return
+        self.chat_entry.configure(state="normal")
+        self.chat_entry.delete(0, tk.END)
+        self.chat_entry.insert(0, text)
+        self.chat_entry.focus_set()
+        try:
+            self.chat_entry.select_range(0, tk.END)
+        except Exception:
+            pass
+        self.status.configure(text="Last query loaded. Edit it and press Send.", text_color=SUCCESS)
+
+    def on_send(self):
+        text = self.chat_entry.get().strip()
+        if not text or self.state.is_busy:
+            return
+        self.chat_entry.delete(0, tk.END)
+        self.controller.send_chat(text)
+
+    def on_back_to_projects(self):
+        self.app.show_page(UploadPage)
+
+    def on_add_files(self):
+        paths = filedialog.askopenfilenames(title="Select CSV/XLSX/JSON files", filetypes=_ALLOWED_FILE_TYPES)
+        if paths:
+            self.controller.add_files_to_current_project(list(paths))
+>>>>>>> Stashed changes
 
     def on_project_files_drop(self, event):
         if not self.state.current_project_path:
@@ -1124,6 +2022,7 @@ class MainPage(ctk.CTkFrame):
         if paths:
             self.controller.add_files_to_current_project(paths)
 
+<<<<<<< Updated upstream
     def on_back_to_projects(self):
         self.controller.refresh_projects()
         self.app.show_page(UploadPage)
@@ -1175,15 +2074,59 @@ class MainPage(ctk.CTkFrame):
         text.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
         text.insert("1.0", content)
         text.configure(state="disabled")
+=======
+    def open_schema_window(self):
+        win = ctk.CTkToplevel(self)
+        win.title("Schema")
+        win.geometry("720x520")
+        win.configure(fg_color=APP_BG)
+        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
+        text.pack(fill="both", expand=True, padx=14, pady=14)
+        lines: list[str] = []
+        for table, cols in self.state.schema_map.items():
+            lines.append(table)
+            for col, dtype in cols.items():
+                lines.append(f"  - {col}: {dtype}")
+            lines.append("")
+        text.insert(tk.END, "\n".join(lines) if lines else "No schema loaded.")
+        text.configure(state="disabled",font=self.app.APP_FONT)
+>>>>>>> Stashed changes
 
     def open_schema_window(self):
         self._open_text_window("Schema", self._schema_text_dump())
 
     def open_categories_window(self):
+<<<<<<< Updated upstream
         self._open_text_window("Categories", self._categories_text_dump())
 
     def open_sql_window(self):
         self._open_text_window("Latest SQL", self.state.generated_sql or "")
+=======
+        win = ctk.CTkToplevel(self)
+        win.title("Categories")
+        win.geometry("720x520")
+        win.configure(fg_color=APP_BG)
+        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
+        text.pack(fill="both", expand=True, padx=14, pady=14)
+        lines: list[str] = []
+        for (table, col), values in sorted(self.state.categorical_index.items()):
+            lines.append(f"{table}.{col}")
+            for value in values[:50]:
+                lines.append(f"  - {value}")
+            lines.append("")
+        text.insert(tk.END, "\n".join(lines) if lines else "No categorical values loaded.")
+        text.configure(state="disabled",font=self.app.APP_FONT)
+
+    def open_sql_window(self):
+        win = ctk.CTkToplevel(self)
+        win.title("Latest SQL")
+        win.geometry("760x480")
+        win.configure(fg_color=APP_BG)
+        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
+        text.pack(fill="both", expand=True, padx=14, pady=14)
+        text.insert(tk.END, self.state.generated_sql or "No SQL generated yet.")
+        text.configure(state="disabled",font=self.app.APP_FONT)
+>>>>>>> Stashed changes
 
     def _has_output(self) -> bool:
         if isinstance(self.state.result_preview, pd.DataFrame):
@@ -1215,12 +2158,68 @@ class MainPage(ctk.CTkFrame):
         if self.state.export_path:
             initial_name = Path(self.state.export_path).name
 
+<<<<<<< Updated upstream
         save_path = filedialog.asksaveasfilename(
             title="Save output CSV as",
             defaultextension=".csv",
             initialfile=initial_name,
             filetypes=[("CSV files", "*.csv")],
             font=app_font(12, "normal")
+=======
+            self.status.configure(text=f"Opened {path.name}", text_color=SUCCESS)
+        except Exception as exc:
+            messagebox.showerror("Open File", str(exc))
+
+    def open_file_preview(self, file_path: str | Path):
+        path = Path(file_path)
+        if not path.exists():
+            messagebox.showerror("File Preview", f"File not found:\n{path}")
+            return
+
+        win = ctk.CTkToplevel(self)
+        win.title(f"File Preview - {path.name}")
+        win.geometry("980x620")
+        win.configure(fg_color=APP_BG)
+        win.grid_rowconfigure(2, weight=1)
+        win.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(win, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 8))
+        header.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            header,
+            text=path.name,
+            font=self.app.APP_FONT,
+            text_color=TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+
+        table = self._guess_table_for_file(path)
+        meta = self._format_file_card_meta(path)
+        if table:
+            meta += f" • table: {table}"
+
+        ctk.CTkLabel(
+            header,
+            text=f"{meta}\n{path}",
+            text_color=MUTED,
+            justify="left",
+            anchor="w",
+            wraplength=740,
+        ).grid(row=1, column=0, sticky="ew", pady=(4, 0))
+
+        button_row = ctk.CTkFrame(header, fg_color="transparent")
+        button_row.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(12, 0))
+        small_button(button_row, "Open in app", lambda p=path: self.open_file_external(p), width=120).pack(anchor="e")
+        small_button(button_row, "Close", win.destroy, width=120).pack(anchor="e", pady=(8, 0))
+
+        preview_note = ctk.CTkLabel(
+            win,
+            text="Previewing up to the first 500 rows.",
+            text_color=MUTED_2,
+            anchor="w",
+>>>>>>> Stashed changes
         )
         if not save_path:
             return
@@ -1297,11 +2296,103 @@ class MainPage(ctk.CTkFrame):
         max_rows = 2000
         display_df = df.head(max_rows)
 
+<<<<<<< Updated upstream
         for _, row in display_df.iterrows():
             values = ["" if pd.isna(v) else str(v) for v in row.tolist()]
             tree.insert("", "end", values=values)
 
         if len(df) > max_rows:
+=======
+    def _render_text_preview(self, parent, text_value: str):
+        text = ctk.CTkTextbox(
+            parent,
+            fg_color=SURFACE_2,
+            border_width=1,
+            border_color=BORDER_SOFT,
+            corner_radius=14,
+            text_color=TEXT,
+            wrap="word",
+        )
+        text.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 14))
+        text.insert(tk.END, text_value)
+        text.configure(state="disabled",font=self.app.APP_FONT)
+
+    def _image_artifact_path(self) -> Path | None:
+        path_value = getattr(self.state, "artifact_path", None)
+        if not path_value:
+            return None
+        path = Path(path_value)
+        if path.suffix.lower() not in _IMAGE_EXTENSIONS:
+            return None
+        if not path.exists():
+            return None
+        return path
+
+    def open_chart_window(self, image_path: str | Path, auto_open: bool = False):
+        path = Path(image_path)
+        if not path.exists():
+            messagebox.showerror("Open Chart", f"Chart file not found:\n{path}")
+            return
+        if path.suffix.lower() not in _IMAGE_EXTENSIONS:
+            messagebox.showerror("Open Chart", f"This does not look like an image file:\n{path}")
+            return
+
+        win = ctk.CTkToplevel(self)
+        win.title(f"Chart Preview - {path.name}")
+        win.geometry("980x720")
+        win.configure(fg_color=APP_BG)
+        win.grid_rowconfigure(2, weight=1)
+        win.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(win, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 8))
+        header.grid_columnconfigure(0, weight=1)
+
+        title_text = "Chart opened automatically" if auto_open else "Chart Preview"
+        ctk.CTkLabel(
+            header,
+            text=title_text,
+            font=self.app.APP_FONT,
+            text_color=TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+
+        ctk.CTkLabel(
+            header,
+            text=f"{path.name}\n{path}",
+            text_color=MUTED,
+            justify="left",
+            anchor="w",
+            wraplength=700,
+        ).grid(row=1, column=0, sticky="ew", pady=(4, 0))
+
+        button_row = ctk.CTkFrame(header, fg_color="transparent")
+        button_row.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(12, 0))
+        primary_button(button_row, "Download Chart", lambda p=path: self.download_chart_file(p), width=135).pack(anchor="e")
+        small_button(button_row, "Open in app", lambda p=path: self.open_file_external(p), width=135).pack(anchor="e", pady=(8, 0))
+        small_button(button_row, "Close", win.destroy, width=135).pack(anchor="e", pady=(8, 0))
+
+        note = ctk.CTkLabel(
+            win,
+            text="The chart image is shown below. Use Download Chart to save a copy.",
+            text_color=MUTED_2,
+            anchor="w",
+        )
+        note.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
+
+        body = ctk.CTkFrame(
+            win,
+            fg_color=SURFACE_2,
+            border_width=1,
+            border_color=BORDER_SOFT,
+            corner_radius=14,
+        )
+        body.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 14))
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(0, weight=1)
+
+        if Image is None:
+>>>>>>> Stashed changes
             ctk.CTkLabel(
                 window,
                 text=f"Showing first {max_rows} rows for performance.",
@@ -1421,7 +2512,14 @@ class MainPage(ctk.CTkFrame):
             if len(uniq) > 20:
                 lines.append(f"- ... ({len(uniq)} total)")
         else:
+<<<<<<< Updated upstream
             lines.extend(["", "No categorical preview available for this column."])
+=======
+            text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
+            text.pack(fill="both", expand=True, padx=14, pady=14)
+            text.insert(tk.END, str(df))
+            text.configure(state="disabled",font=self.app.APP_FONT)
+>>>>>>> Stashed changes
 
         self._set_schema_details("\n".join(lines))
 
