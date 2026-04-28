@@ -286,6 +286,143 @@ def _normalize_bound_constraints(
     return cleaned
 
 
+
+_GOAL_EXCEEDS_PHRASES = {
+    "exceeds", "exceed", "exceeded", "exceeded goals", "exceeds goals",
+    "exceed goals", "exceeded their goals", "exceeds their goals",
+    "above goals", "above goal", "did well", "high performer", "high performers",
+}
+_GOAL_MEETS_PHRASES = {
+    "meets", "meet", "met", "met goals", "meets goals", "meet goals",
+    "met their goals", "meets their goals", "on target",
+}
+_GOAL_BELOW_PHRASES = {
+    "below", "below goals", "below goal", "missed goals", "misses goals",
+    "under goals", "underperformed", "under performing", "low performer", "low performers",
+}
+_PROMO_YES_PHRASES = {
+    "promotion eligible", "eligible for promotion", "ready for promotion",
+}
+_PROMO_NO_PHRASES = {
+    "not promotion eligible", "not eligible for promotion", "not ready for promotion",
+}
+_PROMO_REVIEW_PHRASES = {
+    "under review", "promotion review", "review for promotion", "being reviewed for promotion",
+}
+
+
+def _contains_any_phrase(query_n: str, phrases: set[str]) -> bool:
+    return any(_contains_exact_term(query_n, phrase) for phrase in phrases)
+
+
+def _find_allowed_value(
+    categorical_index: dict[tuple[str, str], list[str]],
+    table_name: str,
+    column_name: str,
+    *candidates: str,
+) -> str | None:
+    allowed = [str(v).strip() for v in categorical_index.get((table_name, column_name), []) if str(v).strip()]
+    for candidate in candidates:
+        candidate_n = _normalize_text(candidate)
+        for value in allowed:
+            if _normalize_text(value) == candidate_n:
+                return value
+    return None
+
+
+def _append_bound_constraint(
+    constraints: list[dict[str, str]],
+    *,
+    table_name: str,
+    column_name: str,
+    value: str | None,
+    source: str,
+) -> None:
+    if not value:
+        return
+    key = (table_name, column_name, value)
+    for item in constraints:
+        if (item.get("table"), item.get("column"), item.get("value")) == key:
+            return
+    constraints.append({"table": table_name, "column": column_name, "value": value, "source": source})
+
+
+def _augment_bound_constraints_from_query(
+    user_request: str,
+    schema_map: dict[str, dict[str, str]],
+    categorical_index: dict[tuple[str, str], list[str]],
+    bound_constraints: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    """Add safe natural-language constraints that alias matching can miss.
+
+    This is intentionally narrow. It only adds constraints when the table/column/value
+    already exist in the loaded schema and the wording is very clear. The main case it
+    protects is queries like "employees who exceeded goals", where the data value is
+    usually stored as goal_attainment = "Exceeds".
+    """
+    query_n = _normalize_text(user_request)
+    constraints = [dict(item) for item in (bound_constraints or [])]
+
+    for table_name, columns in schema_map.items():
+        for column_name in columns.keys():
+            col_n = _normalize_text(column_name).replace(" ", "_")
+
+            if col_n == "goal_attainment":
+                if _contains_any_phrase(query_n, _GOAL_EXCEEDS_PHRASES):
+                    _append_bound_constraint(
+                        constraints,
+                        table_name=table_name,
+                        column_name=column_name,
+                        value=_find_allowed_value(categorical_index, table_name, column_name, "Exceeds"),
+                        source="natural_language_goal_synonym",
+                    )
+                elif _contains_any_phrase(query_n, _GOAL_MEETS_PHRASES):
+                    _append_bound_constraint(
+                        constraints,
+                        table_name=table_name,
+                        column_name=column_name,
+                        value=_find_allowed_value(categorical_index, table_name, column_name, "Meets"),
+                        source="natural_language_goal_synonym",
+                    )
+                elif _contains_any_phrase(query_n, _GOAL_BELOW_PHRASES):
+                    _append_bound_constraint(
+                        constraints,
+                        table_name=table_name,
+                        column_name=column_name,
+                        value=_find_allowed_value(categorical_index, table_name, column_name, "Below"),
+                        source="natural_language_goal_synonym",
+                    )
+
+            elif col_n == "promotion_eligible":
+                # Check negative/review wording before positive wording.
+                if _contains_any_phrase(query_n, _PROMO_NO_PHRASES):
+                    _append_bound_constraint(
+                        constraints,
+                        table_name=table_name,
+                        column_name=column_name,
+                        value=_find_allowed_value(categorical_index, table_name, column_name, "No"),
+                        source="natural_language_promotion_synonym",
+                    )
+                elif _contains_any_phrase(query_n, _PROMO_REVIEW_PHRASES):
+                    _append_bound_constraint(
+                        constraints,
+                        table_name=table_name,
+                        column_name=column_name,
+                        value=_find_allowed_value(categorical_index, table_name, column_name, "Under Review"),
+                        source="natural_language_promotion_synonym",
+                    )
+                elif _contains_any_phrase(query_n, _PROMO_YES_PHRASES):
+                    _append_bound_constraint(
+                        constraints,
+                        table_name=table_name,
+                        column_name=column_name,
+                        value=_find_allowed_value(categorical_index, table_name, column_name, "Yes"),
+                        source="natural_language_promotion_synonym",
+                    )
+
+    return constraints
+
+
 def _infer_mentioned_tables(
     query: str,
     schema_map: dict[str, dict[str, str]],
@@ -363,15 +500,40 @@ def _infer_boolean_operator(user_request: str) -> str:
 
 def _column_aliases(column_name: str) -> set[str]:
     normalized = _normalize_text(column_name)
+    normalized_key = normalized.replace(" ", "_")
     aliases = {normalized, column_name.lower(), column_name.lower().replace("_", " ")}
-    if normalized == "full name" or column_name.lower() == "full_name":
+
+    if normalized_key == "full_name":
         aliases.update({"full name", "fullname", "name", "names", "employee name", "employee names"})
-    if normalized == "email":
-        aliases.update({"email", "emails", "mail"})
-    if normalized == "department":
-        aliases.update({"department", "dept", "team"})
-    if normalized == "role":
-        aliases.update({"role", "roles", "job role"})
+    elif normalized_key in {"employee_id", "user_id"}:
+        aliases.update({"employee id", "employee ids", "id", "ids"})
+    elif normalized_key in {"email", "user_email", "email_address"}:
+        aliases.update({"email", "emails", "mail", "email address", "email addresses"})
+    elif normalized_key == "department":
+        aliases.update({"department", "departments", "dept", "team", "teams"})
+    elif normalized_key == "work_mode":
+        aliases.update({"work mode", "work modes", "remote", "hybrid", "in office", "in-office"})
+    elif normalized_key == "role":
+        aliases.update({"role", "roles", "job role", "job roles", "title", "titles"})
+    elif normalized_key == "level":
+        aliases.update({"level", "levels", "seniority", "seniority level"})
+    elif normalized_key in {"salary", "salary_usd", "base_salary", "annual_salary"}:
+        aliases.update({"salary", "salaries", "pay", "compensation", "salary usd", "salary_usd", "annual salary", "base salary"})
+    elif normalized_key in {"bonus", "bonus_pct", "bonus_percent", "bonus_percentage"}:
+        aliases.update({"bonus", "bonus pct", "bonus percent", "bonus percentage", "bonus_pct"})
+    elif normalized_key == "years_at_company":
+        aliases.update({"years at company", "tenure", "years", "years employed", "time at company"})
+    elif normalized_key == "rating":
+        aliases.update({"rating", "ratings", "score", "review score", "performance rating"})
+    elif normalized_key == "goal_attainment":
+        aliases.update({"goal attainment", "goals", "goal", "goal status", "performance goals"})
+    elif normalized_key == "promotion_eligible":
+        aliases.update({"promotion eligible", "eligible for promotion", "promotion eligibility", "promotion"})
+    elif normalized_key == "manager_id":
+        aliases.update({"manager", "manager id", "manager_id"})
+    elif normalized_key == "review_cycle":
+        aliases.update({"review cycle", "cycle", "review period"})
+
     return {a for a in aliases if a}
 
 
@@ -530,21 +692,26 @@ def _infer_selected_columns(
     mentioned_tables: list[str],
     bound_constraints: list[dict[str, str]],
 ) -> list[tuple[str, str]]:
-    # Only infer projection for simple retrieval phrasing. Aggregates/grouping should go to the LLM path.
+    # Only infer projection for simple retrieval phrasing. Aggregates/grouping should go to the LLM/Python path.
     if not _is_simple_filter_request(user_request):
         return []
 
     candidate_tables: list[str] = []
     if preferred_table:
         candidate_tables.append(preferred_table)
-    for t in mentioned_tables:
-        if t not in candidate_tables:
-            candidate_tables.append(t)
+    for table_name in mentioned_tables:
+        if table_name not in candidate_tables:
+            candidate_tables.append(table_name)
     for item in bound_constraints:
         if item["table"] not in candidate_tables:
             candidate_tables.append(item["table"])
-    if not candidate_tables:
-        candidate_tables = list(schema_map.keys())
+
+    # Projection words such as "salary" can point to a table that is not part of the filters.
+    # Search every loaded table after the likely tables so requests like
+    # "Engineering employees who exceeded goals with their salary" can include compensation.salary_usd.
+    for table_name in schema_map.keys():
+        if table_name not in candidate_tables:
+            candidate_tables.append(table_name)
 
     request_n = _normalize_text(user_request)
     selected: list[tuple[str, str]] = []
@@ -561,11 +728,180 @@ def _infer_selected_columns(
                     break
 
     # Do not treat filter columns as requested output columns unless the user explicitly named them.
+    # Example: "employees in Engineering" should filter by department, not necessarily return department.
     filter_cols = {(item["table"], item["column"]) for item in bound_constraints}
     selected = [item for item in selected if item not in filter_cols or _contains_exact_term(request_n, item[1])]
 
     return selected
 
+
+def _make_employee_id_join(left_alias: str, right_alias: str) -> str:
+    return (
+        f"lower(trim({left_alias}.{_quote_ident('employee_id')})) = "
+        f"lower(trim({right_alias}.{_quote_ident('employee_id')}))"
+    )
+
+
+def _can_join_on_employee_id(schema_map: dict[str, dict[str, str]], left_table: str, right_table: str) -> bool:
+    return _has_column(schema_map, left_table, "employee_id") and _has_column(schema_map, right_table, "employee_id")
+
+
+def _external_selected_tables(selected_columns: list[tuple[str, str]], base_table: str) -> list[str]:
+    tables: list[str] = []
+    for table_name, _column_name in selected_columns:
+        if table_name != base_table and table_name not in tables:
+            tables.append(table_name)
+    return tables
+
+
+def _add_output_joins(
+    *,
+    schema_map: dict[str, dict[str, str]],
+    base_table: str,
+    from_clause: str,
+    alias_map: dict[str, str],
+    selected_columns: list[tuple[str, str]],
+    blocked_tables: set[str] | None = None,
+) -> tuple[str, dict[str, str]] | None:
+    """Join extra tables that are needed only because the user asked to display columns from them.
+
+    This is intentionally conservative. It only joins extra output tables when both the
+    base table and the output table have employee_id. It also refuses blocked tables
+    such as the EXISTS/filter table, because selecting columns from a one-to-many
+    filter table can reintroduce duplicate people.
+    """
+    blocked_tables = blocked_tables or set()
+    next_idx = 1
+    for table_name in _external_selected_tables(selected_columns, base_table):
+        if table_name in blocked_tables:
+            return None
+        if table_name in alias_map:
+            continue
+        if not _can_join_on_employee_id(schema_map, base_table, table_name):
+            return None
+        alias = f"j{next_idx}"
+        next_idx += 1
+        alias_map[table_name] = alias
+        from_clause += (
+            f"\nJOIN {_quote_ident(table_name)} {alias} "
+            f"ON {_make_employee_id_join('t', alias)}"
+        )
+    return from_clause, alias_map
+
+
+
+
+def _build_employee_lookup_sql(
+    *,
+    schema_map: dict[str, dict[str, str]],
+    user_request: str,
+    preferred_table: str | None,
+    mentioned_tables: list[str],
+    bound_constraints: list[dict[str, str]],
+) -> str | None:
+    """Build a safer employee/person lookup query.
+
+    Employee-style questions should usually show who the rows refer to. This
+    path uses the identity table, normally hr_data, as the base table, adds
+    employee_id/full_name by default, uses EXISTS for filter-only tables, and
+    joins extra output tables only for requested display columns such as salary
+    or role.
+    """
+    constraints = _normalize_bound_constraints(bound_constraints)
+    if not _is_simple_filter_request(user_request):
+        return None
+    if not _is_people_lookup_request(user_request):
+        return None
+
+    identity_table = _find_identity_table(schema_map)
+    if identity_table:
+        base_table = identity_table
+    elif preferred_table:
+        base_table = preferred_table
+    elif mentioned_tables:
+        base_table = mentioned_tables[0]
+    elif constraints:
+        base_table = constraints[0]["table"]
+    else:
+        return None
+
+    if base_table not in schema_map:
+        return None
+
+    selected_columns = _infer_selected_columns(
+        user_request=user_request,
+        schema_map=schema_map,
+        preferred_table=base_table,
+        mentioned_tables=mentioned_tables,
+        bound_constraints=constraints,
+    )
+
+    # Treat constraint columns as filters, not default output. For example,
+    # "promotion eligible employees with salary and role" should show the
+    # employee plus salary/role, not just a column full of Yes values.
+    filter_cols = {(item["table"], item["column"]) for item in constraints}
+    selected_columns = [item for item in selected_columns if item not in filter_cols]
+
+    selected_columns = _add_default_identity_columns(
+        user_request=user_request,
+        selected_columns=selected_columns,
+        schema_map=schema_map,
+        base_table=base_table,
+        identity_table=None,
+    )
+
+    alias_map: dict[str, str] = {base_table: "t"}
+    from_clause = f"FROM {_quote_ident(base_table)} t"
+    where_parts: list[str] = []
+    exists_idx = 1
+
+    for item in constraints:
+        table_name = item["table"]
+        column_name = item["column"]
+        value = item["value"]
+
+        if table_name == base_table:
+            where_parts.append(f't.{_quote_ident(column_name)} = {_sql_literal(value)}')
+            continue
+
+        if not _can_join_on_employee_id(schema_map, base_table, table_name):
+            return None
+
+        exists_alias = f"e{exists_idx}"
+        exists_idx += 1
+        exists_where = (
+            f"{_make_employee_id_join('t', exists_alias)} "
+            f"AND {exists_alias}.{_quote_ident(column_name)} = {_sql_literal(value)}"
+        )
+        where_parts.append(
+            "EXISTS (\n"
+            f"    SELECT 1\n"
+            f"    FROM {_quote_ident(table_name)} {exists_alias}\n"
+            f"    WHERE {exists_where}\n"
+            ")"
+        )
+
+    filter_tables = {item["table"] for item in constraints if item["table"] != base_table}
+    joined = _add_output_joins(
+        schema_map=schema_map,
+        base_table=base_table,
+        from_clause=from_clause,
+        alias_map=alias_map,
+        selected_columns=selected_columns,
+        blocked_tables=filter_tables,
+    )
+    if joined is None:
+        return None
+    from_clause, alias_map = joined
+
+    select_clause = _build_select_clause_with_aliases(
+        selected_columns,
+        base_table=base_table,
+        alias_map=alias_map,
+        default_alias="t",
+    )
+    where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+    return f"SELECT {select_clause}\n{from_clause}\nWHERE {where_clause}"
 
 def _group_constraints_for_sql(
     constraints: list[dict[str, str]],
@@ -667,8 +1003,19 @@ def _build_sql_from_bound_constraints(
         alias_map[identity_table] = "h"
         from_clause += (
             f"\nJOIN {_quote_ident(identity_table)} h "
-            f"ON lower(trim(t.{_quote_ident('employee_id')})) = lower(trim(h.{_quote_ident('employee_id')}))"
+            f"ON {_make_employee_id_join('t', 'h')}"
         )
+
+    joined = _add_output_joins(
+        schema_map=schema_map,
+        base_table=preferred_table,
+        from_clause=from_clause,
+        alias_map=alias_map,
+        selected_columns=selected_columns,
+    )
+    if joined is None:
+        return None
+    from_clause, alias_map = joined
 
     select_clause = _build_select_clause_with_aliases(
         selected_columns,
@@ -752,9 +1099,10 @@ def _build_cross_table_bound_sql(
         bound_constraints=constraints,
     )
 
-    # If the request clearly asks for columns that belong to the filter table,
-    # this simple EXISTS path is not the right fit. Fall back to the LLM path.
-    if any(table_name != base_table for table_name, _column_name in selected_columns):
+    # If the request asks to display columns from the EXISTS/filter table,
+    # this simple path is not the right fit because it can reintroduce duplicate
+    # employees when the filter table has multiple rows per person.
+    if any(table_name == other_table for table_name, _column_name in selected_columns):
         return None
 
     identity_table = _identity_join_for_request(
@@ -775,12 +1123,6 @@ def _build_cross_table_bound_sql(
     if identity_table:
         alias_map[identity_table] = "h"
 
-    select_clause = _build_select_clause_with_aliases(
-        selected_columns,
-        base_table=base_table,
-        alias_map=alias_map,
-        default_alias="t",
-    )
     join_condition = f"lower(trim(t.{_quote_ident(left_col)})) = lower(trim(o.{_quote_ident(right_col)}))"
     exists_parts = [join_condition] + list(other_clauses)
     exists_where = " AND ".join(exists_parts)
@@ -799,8 +1141,27 @@ def _build_cross_table_bound_sql(
     if identity_table:
         from_clause += (
             f"\nJOIN {_quote_ident(identity_table)} h "
-            f"ON lower(trim(t.{_quote_ident('employee_id')})) = lower(trim(h.{_quote_ident('employee_id')}))"
+            f"ON {_make_employee_id_join('t', 'h')}"
         )
+
+    joined = _add_output_joins(
+        schema_map=schema_map,
+        base_table=base_table,
+        from_clause=from_clause,
+        alias_map=alias_map,
+        selected_columns=selected_columns,
+        blocked_tables={other_table},
+    )
+    if joined is None:
+        return None
+    from_clause, alias_map = joined
+
+    select_clause = _build_select_clause_with_aliases(
+        selected_columns,
+        base_table=base_table,
+        alias_map=alias_map,
+        default_alias="t",
+    )
 
     return (
         f"SELECT {select_clause}\n"
@@ -862,7 +1223,13 @@ def run_sql_query(
     deterministic_sql = ""
     deterministic_join_sql = ""
 
-    normalized_bound_constraints = _normalize_bound_constraints(bound_constraints, categorical_index)
+    augmented_bound_constraints = _augment_bound_constraints_from_query(
+        user_request=user_request_original,
+        schema_map=schema_map,
+        categorical_index=categorical_index,
+        bound_constraints=bound_constraints,
+    )
+    normalized_bound_constraints = _normalize_bound_constraints(augmented_bound_constraints, categorical_index)
 
     effective_mentioned_tables = list(mentioned_tables or [])
     if not effective_mentioned_tables:
@@ -886,6 +1253,40 @@ def run_sql_query(
     )
 
     generation_request = user_request_grounded.strip() or user_request_original
+
+    employee_lookup_sql = _build_employee_lookup_sql(
+        schema_map=schema_map,
+        user_request=user_request_original,
+        preferred_table=effective_preferred_table,
+        mentioned_tables=effective_mentioned_tables,
+        bound_constraints=normalized_bound_constraints,
+    ) or ""
+
+    if employee_lookup_sql:
+        try:
+            final_sql, changed, missing, df = _try_execute_sql(con=con, sql=employee_lookup_sql, schema_map=schema_map)
+            return RouterResult(
+                route=RouteName.SQL_QUERY,
+                ok=True,
+                message=f"Query returned {len(df)} row(s).",
+                reason="Used deterministic employee lookup before model generation.",
+                sql=final_sql,
+                dataframe=df,
+                metadata={
+                    **grounding_metadata,
+                    "raw_model_output": "",
+                    "initial_sql": employee_lookup_sql,
+                    "auto_join_changed": changed,
+                    "missing_columns": missing,
+                    "row_count": len(df),
+                    "execution_mode": "deterministic_employee_lookup_sql",
+                    "rewrite_attempted": False,
+                    "used_bound_sql": True,
+                },
+            ).with_query(user_request_original)
+        except Exception as employee_lookup_exc:
+            grounding_metadata["employee_lookup_sql_error"] = str(employee_lookup_exc)
+            grounding_metadata["employee_lookup_sql"] = employee_lookup_sql
 
     deterministic_join_sql = _build_cross_table_bound_sql(
         con=con,

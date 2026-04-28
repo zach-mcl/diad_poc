@@ -812,6 +812,7 @@ class MainPage(ctk.CTkFrame):
         self.schema_search_var = tk.StringVar()
         self.schema_search_var.trace_add("write", lambda *_: self.refresh_schema_tree())
         self.selected_schema_item: tuple[str, str | None, str | None] | None = None
+        self.selected_schema_kind: str | None = None
 
         # Internal drag/drop state for the Data Guide.
         # This is not OS-level file drag/drop. It lets users drag table names,
@@ -1014,8 +1015,10 @@ class MainPage(ctk.CTkFrame):
         )
         self.chat_entry.grid(row=0, column=0, sticky="ew")
         self.chat_entry.bind("<Return>", lambda e: self.on_send())
+        self.btn_edit_last_query = small_button(composer, "Edit Last", self.edit_last_query, width=104)
+        self.btn_edit_last_query.grid(row=0, column=1, padx=(8, 0))
         self.btn_send = primary_button(composer, "Send", self.on_send, width=96)
-        self.btn_send.grid(row=0, column=1, padx=(8, 0))
+        self.btn_send.grid(row=0, column=2, padx=(8, 0))
 
         self.status = ctk.CTkLabel(self.chat_card, text="Ready", text_color=MUTED)
         self.status.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 6))
@@ -1098,6 +1101,7 @@ class MainPage(ctk.CTkFrame):
         self.btn_copy_table.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         self.btn_copy_column = small_button(copy_row, "Copy column", self.copy_selected_column, width=120)
         self.btn_copy_column.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        self._update_schema_copy_buttons()
 
         self.schema_chip_area = ctk.CTkFrame(self.guide_card, fg_color="transparent")
         self.schema_chip_area.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 8))
@@ -1515,6 +1519,14 @@ class MainPage(ctk.CTkFrame):
                 pass
 
     def _render_messages(self):
+        # CTkScrollableFrame can keep an old scroll position when its children are
+        # destroyed and rebuilt. Reset first so the canvas never shows a blank
+        # lower portion while the new message bubbles are being laid out.
+        try:
+            self.chat_history._parent_canvas.yview_moveto(0.0)
+        except Exception:
+            pass
+
         clear_children(self.chat_history)
 
         messages = list(self.state.messages)
@@ -1572,13 +1584,28 @@ class MainPage(ctk.CTkFrame):
                 wraplength=bubble_wrap,
             ).pack(anchor="w", padx=13, pady=(3, 10))
 
-        def _scroll_to_bottom():
+        self._scroll_chat_to_latest_message()
+
+    def _scroll_chat_to_latest_message(self):
+        """Scroll to the newest bubble after the scrollregion has settled.
+
+        Without this delay, CustomTkinter sometimes keeps the old scrollregion
+        from the previous render, which creates the blank black area at the
+        bottom of the chat until you manually scroll up.
+        """
+
+        def do_scroll():
             try:
-                self.chat_history._parent_canvas.yview_moveto(1.0)
+                self.chat_history.update_idletasks()
+                canvas = self.chat_history._parent_canvas
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                canvas.yview_moveto(1.0)
             except Exception:
                 pass
 
-        self.after_idle(_scroll_to_bottom)
+        self.after_idle(do_scroll)
+        self.after(80, do_scroll)
+        self.after(180, do_scroll)
 
     def refresh_schema_tree(self):
         if not hasattr(self, "schema_tree"):
@@ -1640,6 +1667,8 @@ class MainPage(ctk.CTkFrame):
             )
             self.schema_summary_label.configure(text=self._schema_counts_text())
             self.selected_schema_item = None
+            self.selected_schema_kind = None
+            self._update_schema_copy_buttons()
             self._render_schema_chips([])
             return
 
@@ -1650,6 +1679,8 @@ class MainPage(ctk.CTkFrame):
             )
             self.schema_summary_label.configure(text=self._schema_counts_text())
             self.selected_schema_item = None
+            self.selected_schema_kind = None
+            self._update_schema_copy_buttons()
             self._render_schema_chips([])
             return
 
@@ -1660,6 +1691,8 @@ class MainPage(ctk.CTkFrame):
         kind = str(values[2]) if len(values) > 2 and values[2] else ("column" if column else "table")
         value = str(values[3]) if len(values) > 3 and values[3] else None
         self.selected_schema_item = (table, column, value if kind == "value" else None)
+        self.selected_schema_kind = kind
+        self._update_schema_copy_buttons()
 
         if kind == "table" or column is None:
             columns = list(self.state.schema_map.get(table, {}).keys())
@@ -1721,23 +1754,67 @@ class MainPage(ctk.CTkFrame):
         self.schema_detail.insert(tk.END, text)
         self.schema_detail.configure(state="disabled")
 
+    def _update_schema_copy_buttons(self):
+        if not hasattr(self, "btn_copy_table") or not hasattr(self, "btn_copy_column"):
+            return
+
+        has_selection = self.selected_schema_item is not None
+        table, column, _value = self.selected_schema_item if has_selection else (None, None, None)
+
+        # Copy table can be used for any selected table/column/value because each item belongs to a table.
+        self.btn_copy_table.configure(state="normal" if table else "disabled")
+
+        # Copy column should only be clickable for real column/value selections.
+        # When a table is selected, column is None, so this stays disabled and cannot copy the table/file text by mistake.
+        column_selected = bool(column) and self.selected_schema_kind in {"column", "value"}
+        self.btn_copy_column.configure(state="normal" if column_selected else "disabled")
+
     def copy_selected_table(self):
         if not self.selected_schema_item:
+            self.status.configure(text="Select a table, column, or value first.", text_color=MUTED)
             return
         table, _column, _value = self.selected_schema_item
+        if not table:
+            self.status.configure(text="Select a table, column, or value first.", text_color=MUTED)
+            return
         self.clipboard_clear()
         self.clipboard_append(table)
         self.status.configure(text=f"Copied table: {table}", text_color=SUCCESS)
 
     def copy_selected_column(self):
         if not self.selected_schema_item:
+            self.status.configure(text="Select a column first.", text_color=MUTED)
             return
         _table, column, _value = self.selected_schema_item
-        if not column:
+        if not column or self.selected_schema_kind not in {"column", "value"}:
+            self.status.configure(text="Select a column first.", text_color=MUTED)
+            self._update_schema_copy_buttons()
             return
         self.clipboard_clear()
         self.clipboard_append(column)
         self.status.configure(text=f"Copied column: {column}", text_color=SUCCESS)
+
+    def _last_user_query(self) -> str | None:
+        for msg in reversed(self.state.messages):
+            if msg.get("role") == "user":
+                text = str(msg.get("content", "")).strip()
+                if text:
+                    return text
+        return None
+
+    def edit_last_query(self):
+        text = self._last_user_query()
+        if not text or self.state.is_busy:
+            return
+        self.chat_entry.configure(state="normal")
+        self.chat_entry.delete(0, tk.END)
+        self.chat_entry.insert(0, text)
+        self.chat_entry.focus_set()
+        try:
+            self.chat_entry.select_range(0, tk.END)
+        except Exception:
+            pass
+        self.status.configure(text="Last query loaded. Edit it and press Send.", text_color=SUCCESS)
 
     def on_send(self):
         text = self.chat_entry.get().strip()
@@ -2186,6 +2263,8 @@ class MainPage(ctk.CTkFrame):
         has_chart = image_path is not None
         has_output = self.state.result_preview is not None or self.state.export_path is not None or has_chart
         self.btn_send.configure(state="disabled" if busy else "normal")
+        last_query_available = self._last_user_query() is not None
+        self.btn_edit_last_query.configure(state="normal" if last_query_available and not busy else "disabled")
         self.chat_entry.configure(state="disabled" if busy else "normal")
         self.btn_open_output.configure(state="normal" if has_output and not busy else "disabled")
         self.btn_download_output.configure(state="normal" if ((has_chart or self.state.export_path) and not busy) else "disabled")
