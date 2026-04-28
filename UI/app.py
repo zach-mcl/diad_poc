@@ -12,6 +12,8 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from UI.controller import Controller
 from UI.state import AppState
 
+import tkinter.font as tkfont
+
 
 _ALLOWED_FILE_TYPES = [
     ("Data files", "*.csv *.xlsx"),
@@ -39,6 +41,11 @@ SUCCESS = "#F3D8D8"
 WARNING = "#B18B8B"
 ERROR = "#FF9AA5"
 
+#PROJECT FONT
+FONT_FAMILY = "Courier New"
+def app_font(size=14, weight="normal"):
+    return ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
+
 
 def glass_panel(parent, **kwargs):
     defaults = {
@@ -55,7 +62,7 @@ def section_title(parent, text: str):
     return ctk.CTkLabel(
         parent,
         text=text,
-        font=ctk.CTkFont(size=18, weight="bold"),
+        font=app_font(18, "bold"),
         text_color=TEXT,
     )
 
@@ -64,7 +71,7 @@ def section_subtitle(parent, text: str, wraplength: int = 320):
     return ctk.CTkLabel(
         parent,
         text=text,
-        font=ctk.CTkFont(size=13),
+        font=app_font(16, "bold"),
         text_color=MUTED,
         wraplength=wraplength,
         justify="left",
@@ -100,7 +107,7 @@ class ToolTip:
             justify="left",
             padx=8,
             pady=6,
-            font=("Arial", 10),
+            font=app_font(12, "normal"),
         )
         label.pack()
 
@@ -121,7 +128,7 @@ def add_corner_help(parent, text: str, x: int = -10, y: int = 10):
     badge = tk.Label(
         parent,
         text="?",
-        font=("Arial", 10, "bold"),
+        font=app_font(20, "bold"),
         fg=ACCENT_HOVER,
         bg=parent_bg,
         cursor="question_arrow",
@@ -172,6 +179,16 @@ class TkApp(DnDCTk):
         self.controller.refresh_projects()
         self.show_page(UploadPage)
         self.render()
+
+        default_font = tkfont.nametofont("TkDefaultFont") #Setting default font
+        default_font.configure(family="Courier New", size=14)
+
+        text_font = tkfont.nametofont("TkTextFont")
+        text_font.configure(family="Courier New", size=14)
+
+        fixed_font = tkfont.nametofont("TkFixedFont")
+        fixed_font.configure(family="Courier New", size=14)
+    
 
     def _configure_ttk_styles(self):
         style = ttk.Style(self)
@@ -224,14 +241,14 @@ class UploadPage(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text="DIAD",
-            font=ctk.CTkFont(size=30, weight="bold"),
+            font=app_font(30, "bold"),
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w")
 
         ctk.CTkLabel(
             header,
             text="Create a project, add your files, and start chatting with your data.",
-            font=ctk.CTkFont(size=14),
+            font=app_font(16, "normal"),
             text_color=MUTED,
         ).grid(row=1, column=0, sticky="w", pady=(6, 0))
 
@@ -275,6 +292,7 @@ class UploadPage(ctk.CTkFrame):
             border_color=BORDER,
             text_color=TEXT,
             placeholder_text="My project",
+            font=app_font(12, "normal"),
             placeholder_text_color=MUTED,
         )
         self.project_name_entry.grid(row=3, column=0, sticky="ew", padx=18, pady=(8, 14))
@@ -298,6 +316,7 @@ class UploadPage(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
             text_color=ACCENT_TEXT,
             command=self.on_pick_files,
+            font=app_font(14, "bold")
         )
         self.btn_pick_files.grid(row=0, column=2, padx=(8, 0))
 
@@ -311,6 +330,7 @@ class UploadPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.on_clear_files,
+            font=app_font(14, "bold")
         )
         self.btn_clear_files.grid(row=0, column=3, padx=(8, 0))
 
@@ -335,6 +355,7 @@ class UploadPage(ctk.CTkFrame):
             self.create_frame,
             text="Use Add Files or drag CSV/XLSX files into the files area.",
             text_color=MUTED,
+            font=app_font(12, "normal")
         )
         self.drop_hint.grid(row=6, column=0, sticky="w", padx=18, pady=(0, 10))
 
@@ -347,6 +368,7 @@ class UploadPage(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
             text_color=ACCENT_TEXT,
             command=self.on_create_project,
+            font=app_font(14, "bold")
         )
         self.btn_create_project.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 18))
 
@@ -392,6 +414,7 @@ class UploadPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.on_refresh_projects,
+            font=app_font(14, "bold")
         )
         self.btn_refresh_projects.grid(row=0, column=2, padx=(8, 0))
 
@@ -413,6 +436,7 @@ class UploadPage(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
             text_color=ACCENT_TEXT,
             command=self.on_open_project,
+            font=app_font(14, "bold")
         )
         self.btn_open_project.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 18))
 
@@ -468,6 +492,7 @@ class UploadPage(ctk.CTkFrame):
                 self.files_scroll,
                 text="No files added yet.",
                 text_color=MUTED,
+               font= app_font(12, "normal")
             ).pack(anchor="w", padx=8, pady=8)
             return
 
@@ -492,6 +517,7 @@ class UploadPage(ctk.CTkFrame):
                 text=p.name,
                 text_color=TEXT,
                 anchor="w",
+                font=app_font(12, "normal")
             ).pack(fill="x", padx=(0, 12), pady=10)
 
     def _render_projects(self):
@@ -505,6 +531,7 @@ class UploadPage(ctk.CTkFrame):
                 self.projects_scroll,
                 text="No projects yet.",
                 text_color=MUTED,
+                font=app_font(12, "normal")
             ).pack(anchor="w", padx=8, pady=8)
             return
 
@@ -534,6 +561,7 @@ class UploadPage(ctk.CTkFrame):
                 hover_color=ACCENT_HOVER,
                 border_color=MUTED,
                 command=self.render,
+                font=app_font(14, "bold")
             )
             radio.grid(row=0, column=0, rowspan=2, padx=(10, 8), pady=12, sticky="n")
 
@@ -545,7 +573,7 @@ class UploadPage(ctk.CTkFrame):
             name_label = ctk.CTkLabel(
                 card,
                 text=item.get("name", "(unnamed)"),
-                font=ctk.CTkFont(size=15, weight="bold"),
+                font=app_font(12, "normal"),
                 text_color=TEXT,
                 anchor="w",
             )
@@ -556,6 +584,7 @@ class UploadPage(ctk.CTkFrame):
                 text=meta,
                 text_color=MUTED,
                 anchor="w",
+                font=app_font(12, "normal")
             )
             meta_label.grid(row=1, column=1, sticky="ew", pady=(0, 10), padx=(0, 10))
 
@@ -697,7 +726,7 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             self.sidebar,
             text="Project",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=app_font(12, "normal"),
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 6))
 
@@ -708,6 +737,7 @@ class MainPage(ctk.CTkFrame):
             wraplength=220,
             justify="left",
             anchor="w",
+            font=app_font(12, "normal")
         )
         self.project_label.grid(row=1, column=0, sticky="ew", padx=16)
 
@@ -718,6 +748,7 @@ class MainPage(ctk.CTkFrame):
             wraplength=220,
             justify="left",
             anchor="w",
+            font=app_font(12, "normal")
         )
         self.project_path_label.grid(row=2, column=0, sticky="ew", padx=16, pady=(6, 14))
 
@@ -734,6 +765,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.on_back_to_projects,
+            font=app_font(14, "bold")
         )
         self.btn_projects.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
@@ -746,6 +778,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.on_add_files,
+            font=app_font(14, "bold")
         )
         self.btn_add_files.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
@@ -762,6 +795,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.open_schema_window,
+            font=app_font(14, "bold")
         )
         self.btn_view_schema.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
@@ -774,6 +808,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.open_categories_window,
+            font=app_font(14, "bold")
         )
         self.btn_view_categories.grid(row=0, column=1, sticky="ew", padx=4)
 
@@ -786,6 +821,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.open_sql_window,
+            font=app_font(14, "bold")
         )
         self.btn_view_sql.grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
@@ -801,7 +837,7 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             files_header,
             text="Files",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=app_font(12, "normal"),
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w")
 
@@ -809,6 +845,7 @@ class MainPage(ctk.CTkFrame):
             files_header,
             text="0 loaded",
             text_color=MUTED_2,
+            font=app_font(12, "normal")
         )
         self.file_count_label_main.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
@@ -850,7 +887,7 @@ class MainPage(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(
             title_wrap,
             text="Ask a question about your data",
-            font=ctk.CTkFont(size=20, weight="bold"),
+            font=app_font(20, "bold"),
             text_color=TEXT,
         )
         self.title_label.grid(row=0, column=0, sticky="w")
@@ -866,6 +903,7 @@ class MainPage(ctk.CTkFrame):
             corner_radius=16,
             text_color=TEXT,
             wrap="word",
+            font=app_font(12, "normal")
         )
         self.chat_history.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 12))
         self.chat_history.configure(state="disabled")
@@ -887,6 +925,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=SURFACE_4,
             text_color=TEXT,
             command=self.open_output_window,
+            font=app_font(14, "bold")
         )
         self.btn_open_output.grid(row=0, column=1, padx=(8, 0))
 
@@ -900,6 +939,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
             text_color=ACCENT_TEXT,
             command=self.download_output_csv,
+            font=app_font(14, "bold")
         )
         self.btn_download_output.grid(row=0, column=2, padx=(8, 0))
 
@@ -916,6 +956,7 @@ class MainPage(ctk.CTkFrame):
             text_color=TEXT,
             placeholder_text="Ask something about your data...",
             placeholder_text_color=MUTED,
+            font=app_font(12, "normal")
         )
         self.chat_entry.grid(row=0, column=0, sticky="ew")
         self.chat_entry.bind("<Return>", lambda e: self.on_send())
@@ -930,6 +971,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
             text_color=ACCENT_TEXT,
             command=self.on_send,
+            font=app_font(14, "bold")
         )
         self.btn_send.grid(row=0, column=1, padx=(8, 0))
 
@@ -967,6 +1009,7 @@ class MainPage(ctk.CTkFrame):
             text_color=TEXT,
             placeholder_text="Search tables or columns...",
             placeholder_text_color=MUTED,
+            font=app_font(12, "normal")
         )
         self.schema_search.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 10))
 
@@ -990,7 +1033,7 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             detail_header,
             text="Selected item",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=app_font(12, "normal"),
             text_color=TEXT,
         ).grid(row=0, column=0, sticky="w")
 
@@ -998,6 +1041,7 @@ class MainPage(ctk.CTkFrame):
             detail_header,
             text="Nothing selected",
             text_color=MUTED_2,
+            font=app_font(12, "normal")
         )
         self.schema_summary_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
@@ -1009,6 +1053,7 @@ class MainPage(ctk.CTkFrame):
             corner_radius=14,
             text_color=TEXT,
             wrap="word",
+            font=app_font(12, "normal")
         )
         self.schema_details.grid(row=5, column=0, sticky="nsew", padx=16, pady=(0, 16))
         self.schema_details.configure(state="disabled")
@@ -1091,6 +1136,7 @@ class MainPage(ctk.CTkFrame):
         paths = filedialog.askopenfilenames(
             title="Add CSV/XLSX files to project",
             filetypes=_ALLOWED_FILE_TYPES,
+            font=app_font(12, "normal")
         )
         if not paths:
             return
@@ -1124,6 +1170,7 @@ class MainPage(ctk.CTkFrame):
             corner_radius=16,
             text_color=TEXT,
             wrap="none",
+            font=app_font(12, "normal")
         )
         text.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
         text.insert("1.0", content)
@@ -1173,6 +1220,7 @@ class MainPage(ctk.CTkFrame):
             defaultextension=".csv",
             initialfile=initial_name,
             filetypes=[("CSV files", "*.csv")],
+            font=app_font(12, "normal")
         )
         if not save_path:
             return
@@ -1213,6 +1261,7 @@ class MainPage(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
             text_color=ACCENT_TEXT,
             command=self.download_output_csv,
+            font=app_font(14, "bold")
         ).grid(row=0, column=1, padx=(8, 0))
 
         table_wrap = glass_panel(window)
@@ -1231,6 +1280,7 @@ class MainPage(ctk.CTkFrame):
             style="Dark.Treeview",
             xscrollcommand=x_scroll.set,
             yscrollcommand=y_scroll.set,
+            font=app_font(12, "normal")
         )
 
         x_scroll.config(command=tree.xview)
@@ -1294,6 +1344,7 @@ class MainPage(ctk.CTkFrame):
                 self.files_scroll,
                 text="No files in this project.",
                 text_color=MUTED,
+                font=app_font(12, "normal")
             ).pack(anchor="w", padx=8, pady=8)
             return
 
@@ -1310,6 +1361,7 @@ class MainPage(ctk.CTkFrame):
                 corner_radius=8,
                 fg_color=ACCENT,
                 text_color=ACCENT_TEXT,
+                font=app_font(12, "normal")
             )
             badge.pack(side="left", padx=(10, 8), pady=10)
 
@@ -1318,6 +1370,7 @@ class MainPage(ctk.CTkFrame):
                 text=p.name,
                 text_color=TEXT,
                 anchor="w",
+                font=app_font(12, "normal")
             ).pack(fill="x", padx=(0, 12), pady=10)
 
     def _set_schema_details(self, content: str):
