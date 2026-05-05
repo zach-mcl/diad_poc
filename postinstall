@@ -29,10 +29,10 @@ echo "Install Directory:: $install_directory"
 echo "Checking for Xcode Command Line Tools"
 if ! xcode-select -p; then
     echo "Installing Xcode Command Line Tools"
-    touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
-    softwareupdate -i "$(softwareupdate -l | grep -o '.*Command Line Tools.*' | head -1 | sed 's/^ *//')" --agree-to-license
-    rm -f /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
-    echo "Xcode Command Line Tools installed"
+    xcode-select --install
+    until xcode-select -p; do
+        sleep 10
+    done
 fi
 
 #checks for xcode install
