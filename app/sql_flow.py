@@ -15,6 +15,10 @@ _AGGREGATE_WORDS = {
     "count", "sum", "avg", "average", "min", "max", "group", "order", "sort",
     "distinct", "top", "bottom", "highest", "lowest", "chart", "plot", "graph",
 }
+_NUMBERIC_GREATER_WORDS = {"above", "over", "greater than", "more than", "higher than", "at least", "minimum", "min"}
+_NUMERIC_LESS_WORDS = {"below", "under", "less than", "lower than", "fewer than", "at most", "maximum", "max"}
+_NUMBERIC_SYMBOL = {">", "<", ">=", "<="}
+#hopefully these values added stops our number issue
 
 
 def format_categorical_text(categorical_index: dict[tuple[str, str], list[str]]) -> str:
@@ -43,6 +47,22 @@ def _normalize_text(text: str) -> str:
     text = text.replace("__", " ").replace("_", " ").replace("-", " ")
     text = re.sub(r"[^a-z0-9@. /]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+def _has_number(text: str) -> bool:
+    return re.search(r"\$?\d[\d, ]*(?:\. \d+)?", text) is not None
+
+def _has_numeric_comparison(user_request: str) -> bool:
+    q = _normalize_text(user_request)
+    if not _has_number(q):
+        return False
+    comparison_words = _NUMBERIC_GREATER_WORDS | _NUMERIC_LESS_WORDS
+    if any(word in q for word in comparison_words):
+        return True
+    if any(symbol in str(user_request or "") for symbol in _NUMBERIC_SYMBOL):
+        return True
+    return False
+
+#checks for numbers
 
 
 def _contains_exact_term(text: str, term: str) -> bool:
@@ -813,6 +833,11 @@ def _build_employee_lookup_sql(
     if not _is_people_lookup_request(user_request):
         return None
 
+    if _has_numeric_comparison(user_request):
+        return None
+    if not constraints:
+        return None
+
     identity_table = _find_identity_table(schema_map)
     if identity_table:
         base_table = identity_table
@@ -900,7 +925,10 @@ def _build_employee_lookup_sql(
         alias_map=alias_map,
         default_alias="t",
     )
-    where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+
+    if not where_parts:
+        return None
+    where_clause = " AND ".join(where_parts)
     return f"SELECT {select_clause}\n{from_clause}\nWHERE {where_clause}"
 
 def _group_constraints_for_sql(
@@ -960,6 +988,8 @@ def _build_sql_from_bound_constraints(
     schema_map: dict[str, dict[str, str]],
     mentioned_tables: list[str],
 ) -> str | None:
+    if _has_numeric_comparison(user_request):
+        return None
     constraints = _normalize_bound_constraints(bound_constraints)
     if not constraints or not preferred_table:
         return None
@@ -1037,6 +1067,8 @@ def _build_cross_table_bound_sql(
     preferred_table: str | None,
     bound_constraints: list[dict[str, str]],
 ) -> str | None:
+    if _has_numeric_comparison(user_request):
+        return None
     """Build deterministic SQL when filters span two tables.
 
     Important behavior:

@@ -6,3 +6,7 @@ output.csv
 /diad/lib
 /diad
 /venv
+dist/
+pkg_build/
+diad.iconset/
+*.pyc

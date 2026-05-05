@@ -903,7 +903,9 @@ class MainPage(ctk.CTkFrame):
         self.btn_view_categories = small_button(nav, "Categories", self.open_categories_window)
         self.btn_view_categories.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         self.btn_view_sql = small_button(nav, "Latest SQL", self.open_sql_window)
-        self.btn_view_sql.grid(row=4, column=0, sticky="ew")
+        self.btn_view_sql.grid(row=4, column=0, sticky="ew", pady=(0, 8))
+        self.btn_view_tips = small_button(nav, "Tips", self.open_tips_window)
+        self.btn_view_tips.grid(row=5, column=0, sticky="ew")
 
         files_section = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         files_section.grid(row=logo_text_row + 7, column=0, sticky="nsew", padx=16, pady=(14, 16))
@@ -961,6 +963,9 @@ class MainPage(ctk.CTkFrame):
         self.result_hint = ctk.CTkLabel(title_wrap, text="", text_color=MUTED)
         self.result_hint.grid(row=1, column=0, sticky="w", pady=(4, 0))
 
+        self.warning_label = ctk.CTkLabel(title_wrap, text="DIAD is an AI application and can make mistakes, please double check outputs", text_color=MUTED_2, font=ctk.CTkFont(size=12), wraplength=720, justify="left", anchor="w")
+        self.warning_label.grid(row=2, column=0, sticky="w", pady=(4, 0))
+
         if self.app.logo_image_small is not None:
             self.chat_logo_holder = ctk.CTkFrame(
                 title_wrap,
@@ -969,7 +974,7 @@ class MainPage(ctk.CTkFrame):
                 width=102,
                 height=58,
             )
-            self.chat_logo_holder.grid(row=0, column=1, rowspan=2, sticky="e", padx=(12, 0))
+            self.chat_logo_holder.grid(row=0, column=1, rowspan=3, sticky="e", padx=(12, 0))
             self.chat_logo_holder.grid_propagate(False)
             self.chat_logo_label = ctk.CTkLabel(
                 self.chat_logo_holder,
@@ -1877,6 +1882,45 @@ class MainPage(ctk.CTkFrame):
         text.pack(fill="both", expand=True, padx=14, pady=14)
         text.insert(tk.END, self.state.generated_sql or "No SQL generated yet.")
         text.configure(state="disabled")
+
+    def open_tips_window(self):
+        win = ctk.CTkToplevel(self)
+        win.title("Tips")
+        win.geometry("760x470")
+        win.configure(fg_color=APP_BG)
+        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
+        text.pack(fill="both", expand=True, padx=14, pady=14)
+        tips_text = """Welcome to DIAD!
+        Below are some tips on how to use the application the most effectively:
+        Prompting:
+        Wording matters! when prompting for a query, the best way to get a good quality response to use the table names directly from the menu bar on the right side of the screen
+        Pro Tip - You can double click the heading in order to insert it directly into the chat box, you can also drag and drop, or select the "quick insert" below the header after clicking
+        Examples of good queries:
+        - List all employees in the engineering department where work_type is "hybrid", return names and employee ID
+        - Show all employees where salary is above 100000 (it is important to note when querying numbers, do not add commas or special signs ex: $ in the query)
+        - List employees where promotion_elligble is "yes"
+        of course, your data may differ, but these are some examples of queries that use direct heading names
+        If a query fails to run, no worries! try rewording and prompting again, DIAD runs view only SQL, so your original data will always remain untouched
+        You can also click "edit last" to pull up your previous query to make rewording easier
+
+        Viewing Data:
+        After a query is ran successfully, the chat window will tell you, in order to view the output, press the "Open Output" button
+        Pro Tip - you can also double click your originally uploaded files to cross compare the data, make sure to double check! DIAD can make mistakes
+        If you would like to view the tables created based on your data, click schemas
+        If you would like to to view the sql that was ran in order to view your query, click "latest sql"
+        If you would like to export a successful query to a .csv file, click "Download CSV"
+
+        Navigation:
+        To go back to the projects panel in order to start a new project or open a previous one, click the projects button
+        If you inserted multiple large tables, you can search for the column heading you would like to query on to make quality prompting easier
+        If you would like to add more files to a working project, you can do so with the "Add Files" Button
+
+        Those are some basic tips to get you started, happy prompting and we hope you enjoy our product!
+        """
+        text.insert(tk.END, tips_text)
+        text.configure(state="disabled")
+
+
 
     def open_file_external(self, file_path: str | Path):
         path = Path(file_path)
