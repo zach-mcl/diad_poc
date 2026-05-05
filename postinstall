@@ -26,6 +26,17 @@ echo "Installing user: $user"
 echo "Install Directory:: $install_directory"
 #Defines install directory, checks who the user is and makes it so that the script can run commands as user ^
 
+echo "Checking for Xcode Command Line Tools"
+if ! xcode-select -p; then
+    echo "Installing Xcode Command Line Tools"
+    touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+    softwareupdate -i "$(softwareupdate -l | grep -o '.*Command Line Tools.*' | head -1 | sed 's/^ *//')" --agree-to-license
+    rm -f /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+    echo "Xcode Command Line Tools installed"
+fi
+
+#checks for xcode install
+
 echo "Checking if Homebrew is installed"
 homebrew=""
 if user_run bash -c 'command -v brew'; then
