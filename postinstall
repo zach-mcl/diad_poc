@@ -50,7 +50,7 @@ elif [ -f "/usr/local/bin/brew" ]; then
     echo "Homebrew found at $homebrew"
 else
     echo "Homebrew not found, installing"
-    user_run /bin/bash -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    user_run bash -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
     if [ -f "/opt/homebrew/bin/brew" ]; then
         homebrew="/opt/homebrew/bin/brew"
         echo "Homebrew found at $homebrew"
@@ -94,7 +94,7 @@ elif [ -f "/usr/local/bin/ollama" ]; then
     echo "Ollama already installed"
 else
     echo "installing Ollama"
-    user_run bash -c 'curl -fsSL https://ollama.com/install.sh | sh'
+    curl -fsSL https://ollama.com/install.sh | sh
     echo "Ollama installed"
 
 fi
@@ -122,15 +122,18 @@ echo "tkdnd library installed"
 
 echo "Starting Ollama"
 if ! curl -s http://localhost:11434/api/tags; then
-    user_run ollama serve &
+    user_run /usr/local/bin/ollama serve &
     ollamaPID=$!
     sleep 5
     echo "Ollama service started"
 fi
 
 echo "pulling duckdb-nsql model (could take some time)"
-user_run ollama pull duckdb-nsql || {
+user_run /usr/local/bin/ollama pull duckdb-nsql || {
     echo "could not pull model, user can run 'ollama pull duckdb-nsql' at a later time"
+}
+user_run /usr/local/bin/ollama pull llama3.2 || {
+    echo "could not pull llama 3.2, user can run ollama pull llama3.2 at a later date"
 }
 
 if [ -n "$ollamaPID" ]; then
