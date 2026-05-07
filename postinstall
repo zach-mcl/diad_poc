@@ -1,145 +1,177 @@
 #!/bin/bash
 
 
-
+set -e
 
 install_directory="/Applications/.diad"
 venv_directory="$install_directory/venv"
 log_file="$install_directory/install.log"
 
-user="${USER}"
-if [ "$user" = "root" ]; then
-    user=$(stat -f "%Su" /dev/console || echo "$SUDO_USER")
-fi
-
-user_home=$(eval echo "~$user")
+mkdir -p "$install_directory"
+touch "$log_file"
 
 log(){
     echo "$1" | tee -a "$log_file"
 }
 
+log "Post install beginning"
+user=$(stat -f "%Su" /dev/console)
+
+if [ -z "$user" ] || [ "$user" = "root" ]; then
+    log "Could not determine logged-in user"
+    exit 1
+fi
+
+user_home=$(eval echo "~$user")
+
+
 user_run(){
     sudo -u "$user" "$@"
 }
 
-echo "Installing user: $user"
-echo "Install Directory:: $install_directory"
+log "Installing user: $user"
+log "Install Directory:: $install_directory"
 #Defines install directory, checks who the user is and makes it so that the script can run commands as user ^
 
-echo "Checking for Xcode Command Line Tools"
-if ! xcode-select -p; then
-    echo "Installing Xcode Command Line Tools"
-    xcode-select --install
-    until xcode-select -p; do
-        sleep 10
-    done
-fi
 
-#checks for xcode install
+log "Checking if Homebrew is installed"
 
-echo "Checking if Homebrew is installed"
 homebrew=""
-if user_run bash -c 'command -v brew'; then
-    homebrew=$(user_run bash -c 'command -v brew')
-    echo "Homebrew found at $homebrew"
-elif [ -f "/opt/homebrew/bin/brew" ]; then
+
+if [ -x "/opt/homebrew/bin/brew" ]; then
     homebrew="/opt/homebrew/bin/brew"
-    echo "Homebrew found at $homebrew"
-elif [ -f "/usr/local/bin/brew" ]; then
+elif [ -x "/usr/local/bin/brew" ]; then
     homebrew="/usr/local/bin/brew"
-    echo "Homebrew found at $homebrew"
 else
-    echo "Homebrew not found, installing"
-    user_run bash -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-    if [ -f "/opt/homebrew/bin/brew" ]; then
-        homebrew="/opt/homebrew/bin/brew"
-        echo "Homebrew found at $homebrew"
-    elif [ -f "/usr/local/bin/brew" ]; then
-        homebrew="/usr/local/bin/brew"
-        echo "Homebrew found at $homebrew"
-    fi
-    echo "Homebrew installed at $homebrew"
-fi
-
-if [ -z "$homebrew" ]; then
-    echo "Could not find homebrew or install"
+    log 'Homebrew not found, Install command: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
     exit 1
 fi
-#Homebrew installer for python check - looks for homebrew to see if it is alrdy installed, if not installs it ^
 
-echo "Checking for Python version 3.12 (note 3.12 is necessary for application)"
+log "Homebrew found at $homebrew"
+
+brew_run() {
+    user_run /bin/bash -lc "eval \"\$($homebrew shellenv)\" && $homebrew $*"
+}
+#Updated -> Only checks if homebrew is installed, it has to be installed externally as it needs a password to install on a local user and homebrew doesn't like being installed at root
+
+log "Checking for Python version 3.12"
 python_install=""
-if user_run "$homebrew" list python@3.12; then
-    python_install=$("$homebrew" --prefix python@3.12)/bin/python3.12
-    echo "Python 3.12 found at $python_install"
+if brew_run list python@3.12 >/dev/null 2>&1; then
+    log "Python 3.12 already installed"
 else
-    echo "Installing Python 3.12"
-    user_run "$homebrew" install python@3.12
-    python_install=$("$homebrew" --prefix python@3.12)/bin/python3.12
-    echo "Python 3.12 installed at $python_install"
+    log "Installing Python 3.12"
+    brew_run install python@3.12
 fi
-
+log "Installing python-tk@3.12"
+brew_run list python-tk@3.12 >/dev/null 2>&1 || brew_run install python-tk@3.12
+python_prefix=$(brew_run --prefix python@3.12)
+python_install="$python_prefix/bin/python3.12"
 if [ ! -f "$python_install" ]; then
-    echo "Error: Python could not be found at $python_install"
+    log "Error: Python could not be found at $python_install"
     exit 1
 fi
-user_run "$homebrew" install python-tk@3.12
-
+log "Python 3.12 found at $python_install"
 #checks for python 3.12 install specifically - version specific for tkinterdnd2 ^
 
-echo "Checking for Ollama"
-if user_run bash -c 'command -v ollama'; then
-    echo "Ollama already installed"
-elif [ -f "/usr/local/bin/ollama" ]; then
-    echo "Ollama already installed"
-else
-    echo "installing Ollama"
-    curl -fsSL https://ollama.com/install.sh | sh
-    echo "Ollama installed"
+log "Checking for Ollama"
 
+ollama_bin=""
+
+if [ -x "/opt/homebrew/bin/ollama" ]; then
+    ollama_bin="/opt/homebrew/bin/ollama"
+elif [ -x "/usr/local/bin/ollama" ]; then
+    ollama_bin="/usr/local/bin/ollama"
+elif [ -x "/Applications/Ollama.app/Contents/Resources/ollama" ]; then
+    ollama_bin="/Applications/Ollama.app/Contents/Resources/ollama"
+elif user_run bash -lc 'command -v ollama >/dev/null 2>&1'; then
+    ollama_bin=$(user_run bash -lc 'command -v ollama')
 fi
-#checks for ollama and installs it if needed
+
+#checks if ollama CLI and app are installed, if CLI is installed does not bother installing app
+
+if [ -z "$ollama_bin" ]; then
+    log "Ollama not Installed, installing"
+
+    brew_run install --cask ollama-app || {
+        log "Homebrew could not install Ollama, it can be installed manually later"
+    }
+
+    if [ -x "/opt/homebrew/bin/ollama" ]; then
+        ollama_bin="/opt/homebrew/bin/ollama"
+    elif [ -x "/usr/local/bin/ollama" ]; then
+        ollama_bin="/usr/local/bin/ollama"
+    elif [ -x "/Applications/Ollama.app/Contents/Resources/ollama" ]; then
+        ollama_bin="/Applications/Ollama.app/Contents/Resources/ollama"
+    elif user_run bash -lc 'command -v ollama >/dev/null 2>&1'; then
+        ollama_bin=$(user_run bash -lc 'command -v ollama')
+    fi
+fi
+
+if [ -n "$ollama_bin" ]; then
+    log "Ollama found at $ollama_bin"
+else
+    log "Ollama was not found after attempted install. Model pulls will be skipped."
+fi
+#checks for ollama and installs it if needed -> old version installed CLI ollama, this one installs app
 
 chown -R "$user:staff" "$install_directory"
 
-echo "creating virtual environment at $venv_directory"
+log "creating virtual environment at $venv_directory"
 user_run "$python_install" -m venv "$venv_directory"
-echo "updating python installer and installing dependencies"
+log "updating python installer and installing dependencies"
 user_run "$venv_directory/bin/pip" install --upgrade pip
 user_run "$venv_directory/bin/pip" install -r "$install_directory/requirements.txt"
 
 echo "Dependencies installed"
 #creates a venv to install dependencies in requirements .txt
 
-echo "installing tcl9 tkdnd"
+log "installing tcl9 tkdnd"
 tkdnd_target="$venv_directory/lib/python3.12/site-packages/tkinterdnd2/tkdnd/osx-arm64"
+mkdir -p "$tkdnd_target"
 cp "$install_directory/tkdnd_tcl9/libtkdnd2.9.5.dylib" "$tkdnd_target/"
 cp "$install_directory/tkdnd_tcl9/"*.tcl "$tkdnd_target/"
 xattr -cr "$tkdnd_target"
-echo "tkdnd library installed"
+xattr -cr "$tkdnd_target"
+log "tkdnd library installed"
 
 #tkinter from homebrew is natively tcl8, which does not work with our 3.12 python, so this pulls the newest version with tcl9 support
 
-echo "Starting Ollama"
-if ! curl -s http://localhost:11434/api/tags; then
-    user_run /usr/local/bin/ollama serve &
-    ollamaPID=$!
-    sleep 5
-    echo "Ollama service started"
+log "Checking if Ollama server is running"
+
+if [ -z "$ollama_bin" ]; then
+    log "Skipping Ollama starting because Ollama wasn't found"
+else
+    if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
+        log "Ollama server is running"
+    else
+        log "Opening Ollama"
+        user_run open -a "Ollama"
+        sleep 60
+
+        if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
+            log "Ollama server started through Ollama app"
+        else
+            log "Ollama app opened, but server did not respond so model pulls are skipped"
+            ollama_bin=""
+        fi
+    fi
 fi
 
-echo "pulling duckdb-nsql model (could take some time)"
-user_run /usr/local/bin/ollama pull duckdb-nsql || {
-    echo "could not pull model, user can run 'ollama pull duckdb-nsql' at a later time"
-}
-user_run /usr/local/bin/ollama pull llama3.2 || {
-    echo "could not pull llama 3.2, user can run ollama pull llama3.2 at a later date"
-}
+if [ -n "$ollama_bin" ]; then
+    log "Pulling duckdb-nsql model"
 
-if [ -n "$ollamaPID" ]; then
-    kill $ollamaPID || true
+    user_run "$ollama_bin" pull duckdb-nsql || {
+        log "Could not pull duckdb-nsql"
+    }
+
+    log "Pulling llama3.2 model"
+
+    user_run "$ollama_bin" pull llama3.2 || {
+        log "Could not pull llama3.2"
+    }
 fi
-#Opens ollama in the back, pulls duckdb model, then closes it ^
+
+#Opens ollama in the back, pulls duckdb and llama models
 
 if [ ! -d "$install_directory/DIAD.app" ]; then
     mkdir -p "$install_directory/DIAD.app/Contents/MacOS"

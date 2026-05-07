@@ -5,3 +5,4 @@ requests==2.33.1
 tkinterdnd2==0.4.3
 customtkinter
 pillow==10.0.0
+matplotlib

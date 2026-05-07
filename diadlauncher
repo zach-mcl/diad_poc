@@ -2,6 +2,7 @@
 
 install_directory="/Applications/.diad"
 venv_directory="$install_directory/venv"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 if [ ! -f "$venv_directory/bin/python" ]; then
     osascript -e 'display alert "DIAD ERROR" message " Python environment not found. Please Reinstall DIAD" as critical'
@@ -22,7 +23,6 @@ if ! curl -s http://localhost:11434/api/tags; then
     fi
 fi
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 #checks for ollama
 echo "Starting DIAD"
