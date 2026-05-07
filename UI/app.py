@@ -12,12 +12,18 @@ from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 import pandas as pd
+
 try:
     from PIL import Image, ImageTk
-except ImportError:
+except ImportError:  # Pillow is optional.
     Image = None
     ImageTk = None
-from tkinterdnd2 import DND_FILES, TkinterDnD
+
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+except ImportError:  # Drag/drop is nice to have, but the app should still run without it.
+    DND_FILES = None
+    TkinterDnD = None
 
 from UI.controller import Controller
 from UI.state import AppState
@@ -29,10 +35,9 @@ _ALLOWED_FILE_TYPES = [
     ("Excel files", "*.xlsx"),
     ("JSON files", "*.json"),
 ]
+_ALLOWED_SUFFIXES = {".csv", ".xlsx", ".json"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-# Dark UI palette with DIAD's red kept as the main brand accent.
-# The red is softer than the original so the app still feels polished instead of harsh.
 APP_BG = "#151216"
 SURFACE = "#211D24"
 SURFACE_2 = "#121114"
@@ -54,6 +59,17 @@ ERROR = "#FF6B73"
 DANGER = "#B91C1C"
 DANGER_HOVER = "#991B1B"
 
+FONT_FAMILY = "Courier New"
+
+
+def app_font(size: int = 14, weight: str = "normal") -> ctk.CTkFont:
+    return ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
+
+
+def tk_app_font(size: int = 12, weight: str = "normal") -> tuple[str, int, str]:
+    return (FONT_FAMILY, size, weight)
+
+
 def glass_panel(parent, **kwargs):
     defaults = {
         "fg_color": SURFACE,
@@ -69,7 +85,7 @@ def section_title(parent, text: str):
     return ctk.CTkLabel(
         parent,
         text=text,
-        font=ctk.CTkFont(size=18, weight="bold"),
+        font=app_font(18, "bold"),
         text_color=TEXT,
     )
 
@@ -78,7 +94,7 @@ def section_subtitle(parent, text: str, wraplength: int = 320):
     return ctk.CTkLabel(
         parent,
         text=text,
-        font=ctk.CTkFont(size=13),
+        font=app_font(13),
         text_color=MUTED,
         wraplength=wraplength,
         justify="left",
@@ -95,6 +111,7 @@ def small_button(parent, text: str, command=None, width: int | None = None):
         fg_color=SURFACE_3,
         hover_color=SURFACE_4,
         text_color=TEXT,
+        font=app_font(12, "bold"),
         command=command,
     )
 
@@ -109,6 +126,7 @@ def primary_button(parent, text: str, command=None, width: int | None = None):
         fg_color=ACCENT,
         hover_color=ACCENT_HOVER,
         text_color=ACCENT_TEXT,
+        font=app_font(13, "bold"),
         command=command,
     )
 
@@ -123,41 +141,55 @@ def danger_button(parent, text: str, command=None, width: int | None = None):
         fg_color=DANGER,
         hover_color=DANGER_HOVER,
         text_color=ACCENT_TEXT,
+        font=app_font(13, "bold"),
         command=command,
     )
 
 
 class ToolTip:
-    def __init__(self, widget, text: str):
+    def __init__(self, widget, text: str, wraplength: int = 360):
         self.widget = widget
         self.text = text
+        self.wraplength = wraplength
         self.tip: tk.Toplevel | None = None
         widget.bind("<Enter>", self.show)
         widget.bind("<Leave>", self.hide)
 
-    def show(self, event=None):
+    def show(self, event=None) -> None:
         if self.tip is not None:
             return
-        x = self.widget.winfo_pointerx() + 12
-        y = self.widget.winfo_pointery() + 12
+
+        x = self.widget.winfo_pointerx() + 14
+        y = self.widget.winfo_pointery() + 14
+
         self.tip = tk.Toplevel(self.widget)
         self.tip.wm_overrideredirect(True)
         self.tip.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(
+        self.tip.configure(bg=SURFACE_2)
+
+        frame = tk.Frame(
             self.tip,
+            bg=SURFACE_2,
+            highlightbackground=ACCENT_HOVER,
+            highlightthickness=1,
+            bd=0,
+        )
+        frame.pack()
+
+        label = tk.Label(
+            frame,
             text=self.text,
-            bg="#FFF3F5",
-            fg="#121114",
-            relief="solid",
-            borderwidth=1,
+            bg=SURFACE_2,
+            fg=TEXT,
             justify="left",
-            padx=8,
-            pady=6,
-            font=("Arial", 10),
+            padx=10,
+            pady=8,
+            wraplength=self.wraplength,
+            font=tk_app_font(11),
         )
         label.pack()
 
-    def hide(self, event=None):
+    def hide(self, event=None) -> None:
         if self.tip:
             self.tip.destroy()
         self.tip = None
@@ -174,9 +206,11 @@ def add_corner_help(parent, text: str, x: int = -10, y: int = 10):
     badge = tk.Label(
         parent,
         text="?",
-        font=("Arial", 10, "bold"),
-        fg=MUTED_2,
+        font=tk_app_font(20, "bold"),
+        fg=ACCENT_HOVER,
         bg=parent_bg,
+        activeforeground=ACCENT,
+        activebackground=parent_bg,
         cursor="question_arrow",
         bd=0,
         highlightthickness=0,
@@ -189,7 +223,6 @@ def add_corner_help(parent, text: str, x: int = -10, y: int = 10):
 
 
 def clear_children(parent):
-    """Destroy child widgets safely during re-render cycles."""
     for child in list(parent.winfo_children()):
         try:
             child.destroy()
@@ -209,10 +242,17 @@ def resolve_logo_path() -> Path | None:
     return None
 
 
-class DnDCTk(ctk.CTk, TkinterDnD.DnDWrapper):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.TkdndVersion = TkinterDnD._require(self)
+if TkinterDnD is not None:
+
+    class DnDCTk(ctk.CTk, TkinterDnD.DnDWrapper):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.TkdndVersion = TkinterDnD._require(self)
+
+else:
+
+    class DnDCTk(ctk.CTk):
+        pass
 
 
 class TkApp(DnDCTk):
@@ -233,7 +273,6 @@ class TkApp(DnDCTk):
         self._window_icon = None
         self._set_window_icon()
 
-        # Important: do NOT use self.state, because Tk/CTk already has a state() method.
         self.app_state = AppState()
         self._render_pending = False
         self.controller = Controller(self.app_state, self.request_render)
@@ -268,14 +307,20 @@ class TkApp(DnDCTk):
             fieldbackground=SURFACE_2,
             foreground=TEXT,
             rowheight=30,
+            font=tk_app_font(11),
             bordercolor=BORDER_SOFT,
             borderwidth=0,
         )
-        style.map("Dark.Treeview", background=[("selected", ACCENT_SOFT)])
+        style.map(
+            "Dark.Treeview",
+            background=[("selected", ACCENT_SOFT)],
+            foreground=[("selected", TEXT)],
+        )
         style.configure(
             "Dark.Treeview.Heading",
             background=SURFACE,
             foreground=TEXT,
+            font=tk_app_font(11, "bold"),
             relief="flat",
         )
         style.map("Dark.Treeview.Heading", background=[("active", SURFACE_3)])
@@ -286,11 +331,6 @@ class TkApp(DnDCTk):
 
         try:
             img = Image.open(self.logo_path).convert("RGBA")
-
-            # The source logo has transparency and dark lettering, so crop the
-            # transparent padding and composite it onto white. This makes the
-            # logo visible on DIAD's dark UI and gives the app icon a clean
-            # white background.
             bbox = img.getbbox()
             if bbox:
                 img = img.crop(bbox)
@@ -316,20 +356,14 @@ class TkApp(DnDCTk):
         logo = self._prepare_logo_pil(square=False)
         if logo is None:
             return None
-
         try:
-            return ctk.CTkImage(
-                light_image=logo,
-                dark_image=logo,
-                size=size,
-            )
+            return ctk.CTkImage(light_image=logo, dark_image=logo, size=size)
         except Exception:
             return None
 
     def _set_window_icon(self):
         if not self.logo_path:
             return
-
         try:
             if Image is not None and ImageTk is not None:
                 icon_img = self._prepare_logo_pil(square=True)
@@ -338,7 +372,6 @@ class TkApp(DnDCTk):
                     self._window_icon = ImageTk.PhotoImage(icon_img)
                     self.iconphoto(False, self._window_icon)
                     return
-
             self._window_icon = tk.PhotoImage(file=str(self.logo_path))
             self.iconphoto(False, self._window_icon)
         except Exception:
@@ -349,12 +382,6 @@ class TkApp(DnDCTk):
         self.render()
 
     def request_render(self):
-        """Schedule UI refreshes on Tk's main thread.
-
-        Controller work runs in background threads, so calling render directly
-        from the controller can randomly break CustomTkinter widgets while they
-        are drawing or being destroyed.
-        """
         if self._render_pending:
             return
         self._render_pending = True
@@ -382,32 +409,22 @@ class UploadPage(ctk.CTkFrame):
         self.pending_files: list[Path] = []
         self.project_records: list[dict] = []
         self.selected_project_var = tk.StringVar(value="")
+        self._progress_running = False
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=8, pady=(6, 18))
-        header.grid_columnconfigure(0, weight=0)
         header.grid_columnconfigure(1, weight=1)
 
         if self.app.logo_image_large is not None:
-            self.upload_logo_holder = ctk.CTkFrame(
-                header,
-                fg_color="#FFFFFF",
-                corner_radius=16,
-                width=214,
-                height=118,
+            holder = ctk.CTkFrame(header, fg_color="#FFFFFF", corner_radius=16, width=214, height=118)
+            holder.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 16))
+            holder.grid_propagate(False)
+            ctk.CTkLabel(holder, text="", image=self.app.logo_image_large, fg_color="#FFFFFF").place(
+                relx=0.5, rely=0.5, anchor="center"
             )
-            self.upload_logo_holder.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 16))
-            self.upload_logo_holder.grid_propagate(False)
-            self.upload_logo_label = ctk.CTkLabel(
-                self.upload_logo_holder,
-                text="",
-                image=self.app.logo_image_large,
-                fg_color="#FFFFFF",
-            )
-            self.upload_logo_label.place(relx=0.5, rely=0.5, anchor="center")
             brand_col = 1
         else:
             brand_col = 0
@@ -415,18 +432,13 @@ class UploadPage(ctk.CTkFrame):
         brand_text = ctk.CTkFrame(header, fg_color="transparent")
         brand_text.grid(row=0, column=brand_col, sticky="ew")
         brand_text.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            brand_text,
-            text="DIAD",
-            font=ctk.CTkFont(size=30, weight="bold"),
-            text_color=TEXT,
-        ).grid(row=0, column=0, sticky="w")
-
+        ctk.CTkLabel(brand_text, text="DIAD", font=app_font(30, "bold"), text_color=TEXT).grid(
+            row=0, column=0, sticky="w"
+        )
         ctk.CTkLabel(
             brand_text,
             text="Create a project, add your files, and start chatting with your data.",
-            font=ctk.CTkFont(size=14),
+            font=app_font(14),
             text_color=MUTED,
         ).grid(row=1, column=0, sticky="w", pady=(6, 0))
 
@@ -442,7 +454,7 @@ class UploadPage(ctk.CTkFrame):
         self.create_frame.grid_rowconfigure(5, weight=1)
         add_corner_help(
             self.create_frame,
-            "Create a project by giving it a name and adding one or more CSV/XLSX/JSON files.",
+            "Start by naming the project, then add CSV, XLSX, or JSON files. DIAD copies those files into the project and loads each sheet/file as a table you can query.",
         )
 
         section_title(self.create_frame, "New Project").grid(row=0, column=0, sticky="w", padx=22, pady=(22, 4))
@@ -461,13 +473,13 @@ class UploadPage(ctk.CTkFrame):
             text_color=TEXT,
             placeholder_text="Project name",
             placeholder_text_color=MUTED_2,
+            font=app_font(13),
         )
         self.project_name_entry.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 12))
 
         action_row = ctk.CTkFrame(self.create_frame, fg_color="transparent")
         action_row.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 12))
         action_row.grid_columnconfigure((0, 1), weight=1)
-
         self.btn_pick_files = small_button(action_row, "Add Files", self.on_pick_files)
         self.btn_pick_files.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.btn_clear_files = small_button(action_row, "Clear", self.on_clear_files)
@@ -486,7 +498,7 @@ class UploadPage(ctk.CTkFrame):
         bottom_row = ctk.CTkFrame(self.create_frame, fg_color="transparent")
         bottom_row.grid(row=6, column=0, sticky="ew", padx=22, pady=(0, 22))
         bottom_row.grid_columnconfigure(0, weight=1)
-        self.status_label = ctk.CTkLabel(bottom_row, text="", text_color=MUTED, anchor="w")
+        self.status_label = ctk.CTkLabel(bottom_row, text="", text_color=MUTED, anchor="w", font=app_font(12))
         self.status_label.grid(row=0, column=0, sticky="ew")
         self.btn_create_project = primary_button(bottom_row, "Create Project", self.on_create_project, width=150)
         self.btn_create_project.grid(row=0, column=1, sticky="e")
@@ -501,13 +513,15 @@ class UploadPage(ctk.CTkFrame):
         )
         self.progress_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         self.progress_bar.grid_remove()
-        self._progress_running = False
 
         self.projects_frame = glass_panel(body)
         self.projects_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
         self.projects_frame.grid_columnconfigure(0, weight=1)
         self.projects_frame.grid_rowconfigure(3, weight=1)
-        add_corner_help(self.projects_frame, "Open an existing project you already created.")
+        add_corner_help(
+            self.projects_frame,
+            "Pick a saved project to reload its files, schema, table names, and chat-ready data context. Use Refresh if a project does not show up yet.",
+        )
 
         section_title(self.projects_frame, "Existing Projects").grid(row=0, column=0, sticky="w", padx=22, pady=(22, 4))
         section_subtitle(self.projects_frame, "Pick a project to continue where you left off.", 440).grid(
@@ -517,7 +531,7 @@ class UploadPage(ctk.CTkFrame):
         project_actions = ctk.CTkFrame(self.projects_frame, fg_color="transparent")
         project_actions.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 12))
         project_actions.grid_columnconfigure(0, weight=1)
-        self.project_count_label = ctk.CTkLabel(project_actions, text="0 available", text_color=MUTED, anchor="w")
+        self.project_count_label = ctk.CTkLabel(project_actions, text="0 available", text_color=MUTED, anchor="w", font=app_font(12))
         self.project_count_label.grid(row=0, column=0, sticky="ew")
         self.btn_refresh_projects = small_button(project_actions, "Refresh", self.on_refresh_projects, width=100)
         self.btn_refresh_projects.grid(row=0, column=1, padx=(8, 0))
@@ -540,6 +554,8 @@ class UploadPage(ctk.CTkFrame):
         self._enable_drop_target(self.create_frame, self.on_files_drop)
 
     def _enable_drop_target(self, widget, callback):
+        if DND_FILES is None:
+            return
         try:
             widget.drop_target_register(DND_FILES)
             widget.dnd_bind("<<Drop>>", callback)
@@ -555,14 +571,28 @@ class UploadPage(ctk.CTkFrame):
     def _file_badge_text(self, path: Path) -> str:
         return path.suffix.replace(".", "").upper() or "FILE"
 
+    def _add_pending_files(self, raw_paths: list[str | Path]):
+        existing = {p.resolve() for p in self.pending_files}
+        for raw in raw_paths:
+            p = Path(raw).expanduser().resolve()
+            if not p.exists() or not p.is_file():
+                continue
+            if p.suffix.lower() not in _ALLOWED_SUFFIXES:
+                continue
+            if p.resolve() in existing:
+                continue
+            self.pending_files.append(p)
+            existing.add(p.resolve())
+        self.render()
+
     def _render_pending_files(self):
         clear_children(self.pending_frame)
-
         if not self.pending_files:
             ctk.CTkLabel(
                 self.pending_frame,
-                text="No files selected yet. Drop CSV/XLSX/JSON files here.",
+                text="No files selected yet.\nDrop CSV/XLSX/JSON files here.",
                 text_color=MUTED,
+                font=app_font(13),
                 justify="left",
                 wraplength=420,
             ).pack(anchor="w", padx=12, pady=14)
@@ -580,21 +610,22 @@ class UploadPage(ctk.CTkFrame):
                 fg_color=ACCENT_SOFT,
                 corner_radius=8,
                 text_color=TEXT,
-                font=ctk.CTkFont(size=12, weight="bold"),
+                font=app_font(12, "bold"),
             ).grid(row=0, column=0, rowspan=2, padx=10, pady=10)
-            ctk.CTkLabel(card, text=path.name, text_color=TEXT, anchor="w").grid(
+            ctk.CTkLabel(card, text=path.name, text_color=TEXT, anchor="w", font=app_font(13)).grid(
                 row=0, column=1, sticky="ew", padx=(0, 10), pady=(10, 0)
             )
-            ctk.CTkLabel(card, text=str(path.parent), text_color=MUTED_2, anchor="w").grid(
+            ctk.CTkLabel(card, text=str(path.parent), text_color=MUTED_2, anchor="w", font=app_font(11)).grid(
                 row=1, column=1, sticky="ew", padx=(0, 10), pady=(0, 10)
             )
 
     def _render_projects(self):
         clear_children(self.projects_scroll)
-
         self.project_count_label.configure(text=f"{len(self.project_records)} available")
         if not self.project_records:
-            ctk.CTkLabel(self.projects_scroll, text="No projects yet.", text_color=MUTED).pack(anchor="w", padx=8, pady=8)
+            ctk.CTkLabel(self.projects_scroll, text="No projects yet.", text_color=MUTED, font=app_font(13)).pack(
+                anchor="w", padx=8, pady=8
+            )
             return
 
         selected = self.selected_project_var.get()
@@ -628,30 +659,19 @@ class UploadPage(ctk.CTkFrame):
 
             created = self._format_created_at(item.get("created_at"))
             meta = f'{item.get("file_count", 0)} file(s) • {created}'
-
             name_label = ctk.CTkLabel(
                 card,
                 text=item.get("name", "(unnamed)"),
-                font=ctk.CTkFont(size=15, weight="bold"),
+                font=app_font(15, "bold"),
                 text_color=TEXT,
                 anchor="w",
             )
             name_label.grid(row=0, column=1, sticky="ew", pady=(10, 2), padx=(0, 10))
-
-            meta_label = ctk.CTkLabel(card, text=meta, text_color=MUTED, anchor="w")
+            meta_label = ctk.CTkLabel(card, text=meta, text_color=MUTED, anchor="w", font=app_font(12))
             meta_label.grid(row=1, column=1, sticky="ew", pady=(0, 10), padx=(0, 10))
 
-            delete_btn = ctk.CTkButton(
-                card,
-                text="Delete",
-                width=72,
-                height=28,
-                corner_radius=10,
-                fg_color=DANGER,
-                hover_color=DANGER_HOVER,
-                text_color=ACCENT_TEXT,
-                command=lambda p=path: self.on_delete_project(p),
-            )
+            delete_btn = danger_button(card, "Delete", lambda p=path: self.on_delete_project(p), width=72)
+            delete_btn.configure(height=28, corner_radius=10, font=app_font(11, "bold"))
             delete_btn.grid(row=0, column=2, rowspan=2, sticky="e", padx=(0, 10), pady=10)
 
             self._bind_project_card([card, radio, name_label, meta_label], path)
@@ -673,20 +693,6 @@ class UploadPage(ctk.CTkFrame):
         if path:
             self.app.controller.open_project(path)
             self.after(120, self.check_transition)
-
-    def _add_pending_files(self, raw_paths: list[str | Path]):
-        existing = {p.resolve() for p in self.pending_files}
-        for raw in raw_paths:
-            p = Path(raw).expanduser().resolve()
-            if not p.exists() or not p.is_file():
-                continue
-            if p.suffix.lower() not in {".csv", ".xlsx", ".json"}:
-                continue
-            if p.resolve() in existing:
-                continue
-            self.pending_files.append(p)
-            existing.add(p.resolve())
-        self.render()
 
     def on_pick_files(self):
         paths = filedialog.askopenfilenames(title="Select CSV/XLSX/JSON files", filetypes=_ALLOWED_FILE_TYPES)
@@ -721,20 +727,17 @@ class UploadPage(ctk.CTkFrame):
     def on_delete_project(self, path: str):
         if not path:
             return
-
         project_name = Path(path).name
         for item in self.project_records:
             if str(item.get("path") or "") == path:
                 project_name = str(item.get("name") or project_name)
                 break
-
         confirmed = messagebox.askyesno(
             "Delete Project",
             f'Delete "{project_name}"?\n\nThis removes the project folder and the copied files stored inside DIAD.',
         )
         if not confirmed:
             return
-
         if self.selected_project_var.get() == path:
             self.selected_project_var.set("")
         self.app.controller.delete_project(path)
@@ -761,11 +764,9 @@ class UploadPage(ctk.CTkFrame):
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
             return dt.strftime("%Y-%m-%d %H:%M")
         except Exception:
-            return value
+            return str(value)
 
     def _show_progress(self, visible: bool):
-        if not hasattr(self, "progress_bar"):
-            return
         if visible:
             self.progress_bar.grid()
             if not self._progress_running:
@@ -813,15 +814,8 @@ class MainPage(ctk.CTkFrame):
         self.schema_search_var.trace_add("write", lambda *_: self.refresh_schema_tree())
         self.selected_schema_item: tuple[str, str | None, str | None] | None = None
         self.selected_schema_kind: str | None = None
-
-        # Internal drag/drop state for the Data Guide.
-        # This is not OS-level file drag/drop. It lets users drag table names,
-        # column names, and categorical values into the chat/search boxes.
-        self.drag_payload: dict[str, str] | None = None
-        self._drag_start_xy: tuple[int, int] | None = None
-        self._drag_started = False
-        self._drag_ghost: tk.Toplevel | None = None
-
+        self._progress_running = False
+        self._last_auto_open_path: Path | None = None
         self._build_layout()
 
     def _build_layout(self):
@@ -830,70 +824,53 @@ class MainPage(ctk.CTkFrame):
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=0)
 
-        # Sidebar
         self.sidebar = glass_panel(self, width=278)
         self.sidebar.grid(row=0, column=0, sticky="nsw", padx=(0, 10), pady=0)
         self.sidebar.grid_propagate(False)
         self.sidebar.grid_columnconfigure(0, weight=1)
         add_corner_help(
             self.sidebar,
-            "This sidebar shows the current project and its files. Use it to go back, add files, or inspect schema details.",
+            "This is your project control area. Use Projects to switch workspaces, Add Files to expand the dataset, Schema to see table/column names, Categories to inspect common values, and Latest SQL to debug the last query.",
         )
 
+        row = 0
         if self.app.logo_image_medium is not None:
-            self.sidebar_logo_holder = ctk.CTkFrame(
-                self.sidebar,
-                fg_color="#FFFFFF",
-                corner_radius=14,
-                width=168,
-                height=92,
+            holder = ctk.CTkFrame(self.sidebar, fg_color="#FFFFFF", corner_radius=14, width=168, height=92)
+            holder.grid(row=row, column=0, sticky="w", padx=16, pady=(16, 10))
+            holder.grid_propagate(False)
+            ctk.CTkLabel(holder, text="", image=self.app.logo_image_medium, fg_color="#FFFFFF").place(
+                relx=0.5, rely=0.5, anchor="center"
             )
-            self.sidebar_logo_holder.grid(row=0, column=0, sticky="w", padx=16, pady=(16, 10))
-            self.sidebar_logo_holder.grid_propagate(False)
-            self.sidebar_logo_label = ctk.CTkLabel(
-                self.sidebar_logo_holder,
-                text="",
-                image=self.app.logo_image_medium,
-                fg_color="#FFFFFF",
-            )
-            self.sidebar_logo_label.place(relx=0.5, rely=0.5, anchor="center")
-            logo_text_row = 1
-        else:
-            logo_text_row = 0
+            row += 1
 
-        self.sidebar.grid_rowconfigure(logo_text_row + 7, weight=1)
-
-        ctk.CTkLabel(
-            self.sidebar,
-            text="Project",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=TEXT,
-        ).grid(row=logo_text_row, column=0, sticky="w", padx=16, pady=(0, 6))
-
+        self.sidebar.grid_rowconfigure(row + 7, weight=1)
+        ctk.CTkLabel(self.sidebar, text="Project", font=app_font(16, "bold"), text_color=TEXT).grid(
+            row=row, column=0, sticky="w", padx=16, pady=(0, 6)
+        )
         self.project_label = ctk.CTkLabel(
             self.sidebar,
             text="No project open",
             text_color=TEXT,
+            font=app_font(13),
             wraplength=230,
             justify="left",
             anchor="w",
         )
-        self.project_label.grid(row=logo_text_row + 1, column=0, sticky="ew", padx=16)
-
+        self.project_label.grid(row=row + 1, column=0, sticky="ew", padx=16)
         self.project_path_label = ctk.CTkLabel(
             self.sidebar,
             text="",
             text_color=MUTED,
+            font=app_font(11),
             wraplength=230,
             justify="left",
             anchor="w",
         )
-        self.project_path_label.grid(row=logo_text_row + 2, column=0, sticky="ew", padx=16, pady=(6, 14))
+        self.project_path_label.grid(row=row + 2, column=0, sticky="ew", padx=16, pady=(6, 14))
 
         nav = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        nav.grid(row=logo_text_row + 3, column=0, sticky="ew", padx=16)
+        nav.grid(row=row + 3, column=0, sticky="ew", padx=16)
         nav.grid_columnconfigure(0, weight=1)
-
         self.btn_projects = small_button(nav, "Projects", self.on_back_to_projects)
         self.btn_projects.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.btn_add_files = small_button(nav, "Add Files", self.on_add_files)
@@ -908,20 +885,16 @@ class MainPage(ctk.CTkFrame):
         self.btn_view_tips.grid(row=5, column=0, sticky="ew")
 
         files_section = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        files_section.grid(row=logo_text_row + 7, column=0, sticky="nsew", padx=16, pady=(14, 16))
+        files_section.grid(row=row + 7, column=0, sticky="nsew", padx=16, pady=(14, 16))
         files_section.grid_rowconfigure(1, weight=1)
         files_section.grid_columnconfigure(0, weight=1)
-
         files_header = ctk.CTkFrame(files_section, fg_color="transparent")
         files_header.grid(row=0, column=0, sticky="ew")
         files_header.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(
-            files_header,
-            text="Files",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=TEXT,
-        ).grid(row=0, column=0, sticky="w")
-        self.file_count_label_main = ctk.CTkLabel(files_header, text="0 loaded", text_color=MUTED_2)
+        ctk.CTkLabel(files_header, text="Files", font=app_font(14, "bold"), text_color=TEXT).grid(
+            row=0, column=0, sticky="w"
+        )
+        self.file_count_label_main = ctk.CTkLabel(files_header, text="0 loaded", text_color=MUTED_2, font=app_font(11))
         self.file_count_label_main.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
         self.files_scroll = ctk.CTkScrollableFrame(
@@ -934,56 +907,45 @@ class MainPage(ctk.CTkFrame):
         self.files_scroll.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         add_corner_help(
             self.files_scroll,
-            "These are the files stored inside the current project. You can drag CSV, XLSX, or JSON files here to add them.",
+            "These are the files currently loaded in this project. Drag more CSV, XLSX, or JSON files here when you want DIAD to add new tables to the same workspace.",
             x=-6,
             y=6,
         )
         self._enable_drop_target(self.files_scroll, self.on_project_files_drop)
 
-        # Chat card
         self.chat_card = glass_panel(self)
         self.chat_card.grid(row=0, column=1, sticky="nsew", padx=10, pady=0)
         self.chat_card.grid_columnconfigure(0, weight=1)
         self.chat_card.grid_rowconfigure(1, weight=1)
         add_corner_help(
             self.chat_card,
-            "Ask questions about your project data here. Output actions show up when DIAD creates a result table.",
+            "Ask data questions here. Try filters like 'who makes 100k or more?', summaries like 'average salary by department', or schema checks like 'what columns are in this table?'. When DIAD creates rows, Open Output and Download CSV become useful.",
         )
 
         title_wrap = ctk.CTkFrame(self.chat_card, fg_color="transparent")
         title_wrap.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 10))
         title_wrap.grid_columnconfigure(0, weight=1)
-        self.title_label = ctk.CTkLabel(
-            title_wrap,
-            text="Chat with your data",
-            font=ctk.CTkFont(size=21, weight="bold"),
-            text_color=TEXT,
-        )
+        self.title_label = ctk.CTkLabel(title_wrap, text="Chat with your data", font=app_font(21, "bold"), text_color=TEXT)
         self.title_label.grid(row=0, column=0, sticky="w")
-        self.result_hint = ctk.CTkLabel(title_wrap, text="", text_color=MUTED)
+        self.result_hint = ctk.CTkLabel(title_wrap, text="", text_color=MUTED, font=app_font(12))
         self.result_hint.grid(row=1, column=0, sticky="w", pady=(4, 0))
-
-        self.warning_label = ctk.CTkLabel(title_wrap, text="DIAD is an AI application and can make mistakes, please double check outputs", text_color=MUTED_2, font=ctk.CTkFont(size=12), wraplength=720, justify="left", anchor="w")
+        self.warning_label = ctk.CTkLabel(
+            title_wrap,
+            text="DIAD is an AI application and can make mistakes, please double check outputs",
+            text_color=MUTED_2,
+            font=app_font(12),
+            wraplength=720,
+            justify="left",
+            anchor="w",
+        )
         self.warning_label.grid(row=2, column=0, sticky="w", pady=(4, 0))
-
         if self.app.logo_image_small is not None:
-            self.chat_logo_holder = ctk.CTkFrame(
-                title_wrap,
-                fg_color="#FFFFFF",
-                corner_radius=10,
-                width=102,
-                height=58,
+            holder = ctk.CTkFrame(title_wrap, fg_color="#FFFFFF", corner_radius=10, width=102, height=58)
+            holder.grid(row=0, column=1, rowspan=3, sticky="e", padx=(12, 0))
+            holder.grid_propagate(False)
+            ctk.CTkLabel(holder, text="", image=self.app.logo_image_small, fg_color="#FFFFFF").place(
+                relx=0.5, rely=0.5, anchor="center"
             )
-            self.chat_logo_holder.grid(row=0, column=1, rowspan=3, sticky="e", padx=(12, 0))
-            self.chat_logo_holder.grid_propagate(False)
-            self.chat_logo_label = ctk.CTkLabel(
-                self.chat_logo_holder,
-                text="",
-                image=self.app.logo_image_small,
-                fg_color="#FFFFFF",
-            )
-            self.chat_logo_label.place(relx=0.5, rely=0.5, anchor="center")
-
 
         self.chat_history = ctk.CTkScrollableFrame(
             self.chat_card,
@@ -998,7 +960,7 @@ class MainPage(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self.chat_card, fg_color="transparent")
         toolbar.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
         toolbar.grid_columnconfigure(0, weight=1)
-        self.output_summary_label = ctk.CTkLabel(toolbar, text="No output yet", text_color=MUTED, anchor="w")
+        self.output_summary_label = ctk.CTkLabel(toolbar, text="No output yet", text_color=MUTED, anchor="w", font=app_font(12))
         self.output_summary_label.grid(row=0, column=0, sticky="w")
         self.btn_open_output = small_button(toolbar, "Open Output", self.open_output_window, width=120)
         self.btn_open_output.grid(row=0, column=1, padx=(8, 0))
@@ -1017,17 +979,17 @@ class MainPage(ctk.CTkFrame):
             text_color=TEXT,
             placeholder_text="Ask something about your data...",
             placeholder_text_color=MUTED_2,
+            font=app_font(13),
         )
         self.chat_entry.grid(row=0, column=0, sticky="ew")
-        self.chat_entry.bind("<Return>", lambda e: self.on_send())
+        self.chat_entry.bind("<Return>", lambda _e: self.on_send())
         self.btn_edit_last_query = small_button(composer, "Edit Last", self.edit_last_query, width=104)
         self.btn_edit_last_query.grid(row=0, column=1, padx=(8, 0))
         self.btn_send = primary_button(composer, "Send", self.on_send, width=96)
         self.btn_send.grid(row=0, column=2, padx=(8, 0))
 
-        self.status = ctk.CTkLabel(self.chat_card, text="Ready", text_color=MUTED)
+        self.status = ctk.CTkLabel(self.chat_card, text="Ready", text_color=MUTED, font=app_font(12))
         self.status.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 6))
-
         self.progress_bar = ctk.CTkProgressBar(
             self.chat_card,
             height=8,
@@ -1038,9 +1000,7 @@ class MainPage(ctk.CTkFrame):
         )
         self.progress_bar.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 16))
         self.progress_bar.grid_remove()
-        self._progress_running = False
 
-        # Data guide
         self.guide_card = glass_panel(self, width=340)
         self.guide_card.grid(row=0, column=2, sticky="nse", padx=(10, 0), pady=0)
         self.guide_card.grid_propagate(False)
@@ -1049,13 +1009,13 @@ class MainPage(ctk.CTkFrame):
         self.guide_card.grid_rowconfigure(7, weight=1)
         add_corner_help(
             self.guide_card,
-            "Use the Data Guide to see table names and headers before you ask a question.",
+            "Use the Data Guide to see exact table names, columns, and known values. Select a column to enable Copy Column, or use Insert Selected to drop exact schema wording into your next question.",
         )
 
         section_title(self.guide_card, "Data Guide").grid(row=0, column=0, sticky="w", padx=16, pady=(16, 4))
         section_subtitle(
             self.guide_card,
-            "Browse tables, headers, and sample values. Drag or double-click an item to add it to the chat box.",
+            "Browse tables, headers, and sample values. Double-click an item to add it to the chat box.",
             wraplength=285,
         ).grid(row=1, column=0, sticky="w", padx=16, pady=(0, 10))
 
@@ -1069,6 +1029,7 @@ class MainPage(ctk.CTkFrame):
             text_color=TEXT,
             placeholder_text="Search tables, columns, or values...",
             placeholder_text_color=MUTED_2,
+            font=app_font(12),
         )
         self.schema_search.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 10))
 
@@ -1078,11 +1039,8 @@ class MainPage(ctk.CTkFrame):
         tree_wrap.grid_columnconfigure(0, weight=1)
         self.schema_tree = ttk.Treeview(tree_wrap, show="tree", style="Dark.Treeview")
         self.schema_tree.grid(row=0, column=0, sticky="nsew", padx=(8, 0), pady=8)
-        self.schema_tree.bind("<<TreeviewSelect>>", lambda e: self.show_schema_details())
+        self.schema_tree.bind("<<TreeviewSelect>>", lambda _e: self.show_schema_details())
         self.schema_tree.bind("<Double-Button-1>", self.on_schema_tree_double_click)
-        self.schema_tree.bind("<ButtonPress-1>", self.on_schema_tree_press, add="+")
-        self.schema_tree.bind("<B1-Motion>", self.on_schema_tree_motion)
-        self.schema_tree.bind("<ButtonRelease-1>", self.on_schema_tree_release, add="+")
         tree_scroll = ttk.Scrollbar(tree_wrap, orient="vertical", command=self.schema_tree.yview)
         tree_scroll.grid(row=0, column=1, sticky="ns", padx=(0, 8), pady=8)
         self.schema_tree.configure(yscrollcommand=tree_scroll.set)
@@ -1090,13 +1048,10 @@ class MainPage(ctk.CTkFrame):
         detail_header = ctk.CTkFrame(self.guide_card, fg_color="transparent")
         detail_header.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 8))
         detail_header.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(
-            detail_header,
-            text="Selected item",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=TEXT,
-        ).grid(row=0, column=0, sticky="w")
-        self.schema_summary_label = ctk.CTkLabel(detail_header, text="Nothing selected", text_color=MUTED_2)
+        ctk.CTkLabel(detail_header, text="Selected item", font=app_font(14, "bold"), text_color=TEXT).grid(
+            row=0, column=0, sticky="w"
+        )
+        self.schema_summary_label = ctk.CTkLabel(detail_header, text="Nothing selected", text_color=MUTED_2, font=app_font(11))
         self.schema_summary_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
         copy_row = ctk.CTkFrame(self.guide_card, fg_color="transparent")
@@ -1106,21 +1061,14 @@ class MainPage(ctk.CTkFrame):
         self.btn_copy_table.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         self.btn_copy_column = small_button(copy_row, "Copy column", self.copy_selected_column, width=120)
         self.btn_copy_column.grid(row=0, column=1, sticky="ew", padx=(5, 0))
-        self._update_schema_copy_buttons()
 
-        self.schema_chip_area = ctk.CTkFrame(self.guide_card, fg_color="transparent")
-        self.schema_chip_area.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 8))
-        self.schema_chip_area.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(
-            self.schema_chip_area,
-            text="Quick insert",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=MUTED_2,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
-        self.schema_chip_frame = ctk.CTkFrame(self.schema_chip_area, fg_color="transparent")
-        self.schema_chip_frame.grid(row=1, column=0, sticky="ew")
-        self.schema_chip_frame.grid_columnconfigure((0, 1), weight=1)
+        chip_row = ctk.CTkFrame(self.guide_card, fg_color="transparent")
+        chip_row.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 8))
+        chip_row.grid_columnconfigure((0, 1), weight=1)
+        self.btn_insert_selected = small_button(chip_row, "Insert selected", self.insert_selected_schema_item, width=120)
+        self.btn_insert_selected.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.btn_search_selected = small_button(chip_row, "Search selected", self.search_selected_schema_item, width=120)
+        self.btn_search_selected.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         self.schema_detail = ctk.CTkTextbox(
             self.guide_card,
@@ -1129,12 +1077,16 @@ class MainPage(ctk.CTkFrame):
             border_color=BORDER_SOFT,
             corner_radius=14,
             text_color=TEXT,
+            font=app_font(12),
             wrap="word",
         )
         self.schema_detail.grid(row=7, column=0, sticky="nsew", padx=16, pady=(0, 16))
         self.schema_detail.configure(state="disabled")
+        self._update_schema_copy_buttons()
 
     def _enable_drop_target(self, widget, callback):
+        if DND_FILES is None:
+            return
         try:
             widget.drop_target_register(DND_FILES)
             widget.dnd_bind("<<Drop>>", callback)
@@ -1147,6 +1099,57 @@ class MainPage(ctk.CTkFrame):
         except Exception:
             return []
 
+    def _safe_open_path(self, path: Path):
+        path = Path(path)
+        if not path.exists():
+            messagebox.showinfo("Open File", f"Could not find: {path}")
+            return
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+            elif os.name == "nt":
+                os.startfile(str(path))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception as exc:
+            messagebox.showinfo("Open File", f"Could not open file:\n{exc}")
+
+    def _insert_text_into_chat_entry(self, text: str):
+        text = str(text).strip()
+        if not text:
+            return
+        current = self.chat_entry.get()
+        spacer = "" if not current or current.endswith((" ", "\n")) else " "
+        self.chat_entry.insert(tk.END, f"{spacer}{text}")
+        self.chat_entry.focus_set()
+
+    def _set_schema_search_text(self, text: str):
+        text = str(text).strip()
+        if not text:
+            return
+        self.schema_search.delete(0, tk.END)
+        self.schema_search.insert(0, text)
+        self.schema_search.focus_set()
+
+    def _schema_payload_from_tree_item(self, item_id: str) -> dict[str, str] | None:
+        if not item_id:
+            return None
+        values = list(self.schema_tree.item(item_id, "values") or [])
+        item_text = str(self.schema_tree.item(item_id, "text") or "")
+        if not values and not item_text:
+            return None
+        table = str(values[0]) if len(values) > 0 and values[0] else item_text
+        column = str(values[1]) if len(values) > 1 and values[1] else ""
+        kind = str(values[2]) if len(values) > 2 and values[2] else ("column" if column else "table")
+        value = str(values[3]) if len(values) > 3 and values[3] else ""
+        return self._make_schema_payload(table, column or None, value or None, kind)
+
+    def _selected_schema_payload(self) -> dict[str, str] | None:
+        selected = self.schema_tree.selection()
+        if not selected:
+            return None
+        return self._schema_payload_from_tree_item(selected[0])
+
     def _make_schema_payload(
         self,
         table: str,
@@ -1158,7 +1161,6 @@ class MainPage(ctk.CTkFrame):
         column = str(column or "")
         value = str(value or "")
         kind = kind or ("value" if value and column else "column" if column else "table")
-
         insert_text = self.controller.format_schema_insert_text(
             table=table,
             column=column or None,
@@ -1169,14 +1171,12 @@ class MainPage(ctk.CTkFrame):
             column=column or None,
             value=value or None,
         )
-
         if kind == "value":
             display = f'{column} is "{value}"'
         elif kind == "column":
             display = column
         else:
             display = table
-
         return {
             "kind": kind,
             "table": table,
@@ -1187,245 +1187,46 @@ class MainPage(ctk.CTkFrame):
             "display": display,
         }
 
-    def _schema_payload_from_tree_item(self, item_id: str) -> dict[str, str] | None:
-        if not item_id:
-            return None
-
-        values = list(self.schema_tree.item(item_id, "values") or [])
-        item_text = str(self.schema_tree.item(item_id, "text") or "")
-        if not values and not item_text:
-            return None
-
-        table = str(values[0]) if len(values) > 0 and values[0] else item_text
-        column = str(values[1]) if len(values) > 1 and values[1] else ""
-        kind = str(values[2]) if len(values) > 2 and values[2] else ("column" if column else "table")
-        value = str(values[3]) if len(values) > 3 and values[3] else ""
-
-        return self._make_schema_payload(
-            table=table,
-            column=column or None,
-            value=value or None,
-            kind=kind,
-        )
-
-    def _schema_payload_from_event(self, event) -> dict[str, str] | None:
-        item_id = self.schema_tree.identify_row(event.y)
-        return self._schema_payload_from_tree_item(item_id)
-
-    def _clear_schema_chips(self):
-        if not hasattr(self, "schema_chip_frame"):
-            return
-        clear_children(self.schema_chip_frame)
-
-    def _bind_schema_chip(self, chip, payload: dict[str, str]):
-        try:
-            chip.configure(cursor="hand2")
-        except Exception:
-            pass
-        chip.bind("<ButtonPress-1>", lambda event, p=payload: self.on_schema_chip_press(event, p), add="+")
-        chip.bind("<B1-Motion>", self.on_schema_chip_motion, add="+")
-        chip.bind("<ButtonRelease-1>", self.on_schema_chip_release, add="+")
-
-    def _render_schema_chips(self, payloads: list[dict[str, str]]):
-        self._clear_schema_chips()
-        if not hasattr(self, "schema_chip_frame"):
-            return
-
-        if not payloads:
-            chip = ctk.CTkLabel(
-                self.schema_chip_frame,
-                text="Select an item to show draggable chips.",
-                text_color=MUTED_2,
-                anchor="w",
-            )
-            chip.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
-            return
-
-        for idx, payload in enumerate(payloads[:10]):
-            label_text = payload.get("display", "item")
-            if len(label_text) > 28:
-                label_text = label_text[:25] + "..."
-
-            chip = ctk.CTkFrame(
-                self.schema_chip_frame,
-                fg_color=ACCENT_SOFT,
-                border_width=1,
-                border_color=BORDER_SOFT,
-                corner_radius=18,
-            )
-            chip.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=(0, 6), pady=(0, 6))
-
-            label = ctk.CTkLabel(
-                chip,
-                text=label_text,
-                text_color=TEXT,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                anchor="center",
-                wraplength=125,
-            )
-            label.pack(fill="both", expand=True, padx=10, pady=5)
-
-            self._bind_schema_chip(chip, payload)
-            self._bind_schema_chip(label, payload)
-
-    def _start_schema_drag(self, payload: dict[str, str] | None, event):
-        self.drag_payload = payload
-        self._drag_start_xy = (event.x_root, event.y_root)
-        self._drag_started = False
-
-    def on_schema_chip_press(self, event, payload: dict[str, str]):
-        self._start_schema_drag(payload, event)
-        return "break"
-
-    def on_schema_chip_motion(self, event):
-        return self.on_schema_tree_motion(event)
-
-    def on_schema_chip_release(self, event):
-        if not self.drag_payload:
-            return "break"
-
-        if not self._drag_started:
-            payload = self.drag_payload
-            self._insert_text_into_chat_entry(payload.get("insert_text", ""))
-            self.status.configure(text=f"Added: {payload.get('display', 'item')}", text_color=SUCCESS)
-            self._reset_schema_drag()
-            return "break"
-
-        return self.on_schema_tree_release(event)
-
-    def _insert_text_into_chat_entry(self, text: str):
-        text = str(text).strip()
-        if not text:
-            return
-
-        current = self.chat_entry.get()
-        spacer = "" if not current or current.endswith((" ", "\n")) else " "
-        self.chat_entry.insert(tk.END, f"{spacer}{text}")
-        self.chat_entry.focus_set()
-
-    def _set_schema_search_text(self, text: str):
-        text = str(text).strip()
-        if not text:
-            return
-
-        self.schema_search.delete(0, tk.END)
-        self.schema_search.insert(0, text)
-        self.schema_search.focus_set()
-
-    def _widget_is_or_contains(self, widget, possible_parent) -> bool:
-        while widget is not None:
-            if widget == possible_parent:
-                return True
-            widget = getattr(widget, "master", None)
-        return False
-
-    def _drop_target_for_pointer(self, event) -> str | None:
-        target = self.winfo_containing(event.x_root, event.y_root)
-        if target is None:
-            return None
-        if self._widget_is_or_contains(target, self.chat_entry):
-            return "chat"
-        if self._widget_is_or_contains(target, self.schema_search):
-            return "schema_search"
-        return None
-
-    def _create_drag_ghost(self, text: str, x: int, y: int):
-        self._destroy_drag_ghost()
-        self._drag_ghost = tk.Toplevel(self)
-        self._drag_ghost.wm_overrideredirect(True)
-        self._drag_ghost.wm_attributes("-topmost", True)
-        self._drag_ghost.configure(bg=APP_BG)
-
-        bubble = ctk.CTkFrame(
-            self._drag_ghost,
-            fg_color=ACCENT,
-            border_width=1,
-            border_color=ACCENT_HOVER,
-            corner_radius=18,
-        )
-        bubble.pack()
-        ctk.CTkLabel(
-            bubble,
-            text=text,
-            text_color=ACCENT_TEXT,
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(padx=12, pady=6)
-        self._move_drag_ghost(x, y)
-
-    def _move_drag_ghost(self, x: int, y: int):
-        if self._drag_ghost is not None:
-            self._drag_ghost.wm_geometry(f"+{x + 12}+{y + 12}")
-
-    def _destroy_drag_ghost(self):
-        if self._drag_ghost is not None:
-            try:
-                self._drag_ghost.destroy()
-            except Exception:
-                pass
-        self._drag_ghost = None
-
-    def _reset_schema_drag(self):
-        self._destroy_drag_ghost()
-        self.drag_payload = None
-        self._drag_start_xy = None
-        self._drag_started = False
-
-    def on_schema_tree_press(self, event):
-        self._start_schema_drag(self._schema_payload_from_event(event), event)
-
-    def on_schema_tree_motion(self, event):
-        if not self.drag_payload or not self._drag_start_xy:
-            return
-
-        start_x, start_y = self._drag_start_xy
-        distance = abs(event.x_root - start_x) + abs(event.y_root - start_y)
-        if not self._drag_started and distance < 8:
-            return
-
-        if not self._drag_started:
-            self._drag_started = True
-            self._create_drag_ghost(self.drag_payload.get("display", "item"), event.x_root, event.y_root)
-            self.status.configure(text="Drop into the chat box, or drop into Data Guide search to filter.", text_color=WARNING)
-        else:
-            self._move_drag_ghost(event.x_root, event.y_root)
-
-    def on_schema_tree_release(self, event):
-        if not self.drag_payload:
-            return
-
-        if not self._drag_started:
-            self._reset_schema_drag()
-            return
-
-        target = self._drop_target_for_pointer(event)
-        if target == "chat":
-            self._insert_text_into_chat_entry(self.drag_payload.get("insert_text", ""))
-            self.status.configure(text=f"Added: {self.drag_payload.get('display', 'item')}", text_color=SUCCESS)
-        elif target == "schema_search":
-            self._set_schema_search_text(self.drag_payload.get("search_text", ""))
-            self.status.configure(text=f"Searching: {self.drag_payload.get('search_text', '')}", text_color=SUCCESS)
-        else:
-            self.status.configure(text="Drag canceled", text_color=MUTED)
-
-        self._reset_schema_drag()
-        return "break"
-
     def on_schema_tree_double_click(self, event):
-        payload = self._schema_payload_from_event(event)
+        payload = self._selected_schema_payload()
         if not payload:
             return
         self._insert_text_into_chat_entry(payload.get("insert_text", ""))
         self.status.configure(text=f"Added: {payload.get('display', 'item')}", text_color=SUCCESS)
         return "break"
 
+    def insert_selected_schema_item(self):
+        payload = self._selected_schema_payload()
+        if not payload:
+            return
+        self._insert_text_into_chat_entry(payload.get("insert_text", ""))
+
+    def search_selected_schema_item(self):
+        payload = self._selected_schema_payload()
+        if not payload:
+            return
+        self._set_schema_search_text(payload.get("search_text", ""))
+
     def fill_suggestion(self, text: str):
         self.chat_entry.delete(0, tk.END)
         self.chat_entry.insert(0, text)
         self.chat_entry.focus_set()
 
+    def _iter_columns(self, table: str):
+        columns = self.state.schema_map.get(table, {})
+        if isinstance(columns, dict):
+            for column, dtype in columns.items():
+                yield str(column), str(dtype)
+        else:
+            for item in columns:
+                if isinstance(item, (tuple, list)) and len(item) >= 2:
+                    yield str(item[0]), str(item[1])
+                else:
+                    yield str(item), "unknown"
+
     def _table_column_counts(self) -> tuple[int, int]:
         table_count = len(self.state.schema_map)
-        column_count = sum(len(cols) for cols in self.state.schema_map.values())
+        column_count = sum(1 for table in self.state.schema_map for _ in self._iter_columns(table))
         return table_count, column_count
 
     def _format_file_card_meta(self, path: Path) -> str:
@@ -1452,12 +1253,12 @@ class MainPage(ctk.CTkFrame):
 
     def _render_files(self):
         clear_children(self.files_scroll)
-
         files = list(self.state.csv_files) + list(self.state.xlsx_files) + list(getattr(self.state, "json_files", []))
         self.file_count_label_main.configure(text=f"{len(files)} loaded")
-
         if not files:
-            ctk.CTkLabel(self.files_scroll, text="No files loaded.", text_color=MUTED).pack(anchor="w", padx=8, pady=8)
+            ctk.CTkLabel(self.files_scroll, text="No files loaded.", text_color=MUTED, font=app_font(13)).pack(
+                anchor="w", padx=8, pady=8
+            )
             return
 
         seen_names: dict[str, int] = {}
@@ -1469,7 +1270,6 @@ class MainPage(ctk.CTkFrame):
             card = ctk.CTkFrame(self.files_scroll, fg_color=SURFACE_3, corner_radius=12)
             card.pack(fill="x", padx=4, pady=5)
             card.grid_columnconfigure(1, weight=1)
-
             badge_text = path.suffix.replace(".", "").upper() or "FILE"
             badge = ctk.CTkLabel(
                 card,
@@ -1479,11 +1279,10 @@ class MainPage(ctk.CTkFrame):
                 fg_color=ACCENT_SOFT,
                 corner_radius=8,
                 text_color=TEXT,
-                font=ctk.CTkFont(size=12, weight="bold"),
+                font=app_font(12, "bold"),
             )
             badge.grid(row=0, column=0, rowspan=3, padx=10, pady=8)
-
-            name_label = ctk.CTkLabel(card, text=path.name, text_color=TEXT, anchor="w", wraplength=160)
+            name_label = ctk.CTkLabel(card, text=path.name, text_color=TEXT, anchor="w", wraplength=160, font=app_font(12))
             name_label.grid(row=0, column=1, sticky="ew", pady=(8, 0), padx=(0, 10))
 
             table = self._guess_table_for_file(path)
@@ -1492,25 +1291,23 @@ class MainPage(ctk.CTkFrame):
                 meta += f" • table: {table}"
             if duplicate:
                 meta += " • duplicate name"
-
             meta_label = ctk.CTkLabel(
                 card,
                 text=meta,
                 text_color=WARNING if duplicate else MUTED_2,
                 anchor="w",
                 wraplength=165,
+                font=app_font(10),
             )
             meta_label.grid(row=1, column=1, sticky="ew", pady=(1, 2), padx=(0, 10))
-
             hint_label = ctk.CTkLabel(
                 card,
                 text="Double-click to preview",
                 text_color=MUTED_2,
                 anchor="w",
-                font=ctk.CTkFont(size=11),
+                font=app_font(10),
             )
             hint_label.grid(row=2, column=1, sticky="ew", pady=(0, 8), padx=(0, 10))
-
             self._bind_loaded_file_card([card, badge, name_label, meta_label, hint_label], path)
 
     def _bind_loaded_file_card(self, widgets, path: Path):
@@ -1524,26 +1321,22 @@ class MainPage(ctk.CTkFrame):
                 pass
 
     def _render_messages(self):
-        # CTkScrollableFrame can keep an old scroll position when its children are
-        # destroyed and rebuilt. Reset first so the canvas never shows a blank
-        # lower portion while the new message bubbles are being laid out.
         try:
             self.chat_history._parent_canvas.yview_moveto(0.0)
         except Exception:
             pass
 
         clear_children(self.chat_history)
-
         messages = list(self.state.messages)
         if not messages:
-            empty = ctk.CTkLabel(
+            ctk.CTkLabel(
                 self.chat_history,
                 text="Ask a question to get started.",
                 text_color=MUTED,
+                font=app_font(13),
                 anchor="w",
                 justify="left",
-            )
-            empty.pack(anchor="w", padx=14, pady=14)
+            ).pack(anchor="w", padx=14, pady=14)
             return
 
         available_width = self.chat_card.winfo_width()
@@ -1566,24 +1359,20 @@ class MainPage(ctk.CTkFrame):
                 border_color=ACCENT_HOVER if is_user else BORDER_SOFT,
                 corner_radius=18,
             )
-            bubble.pack(
-                anchor="e" if is_user else "w",
-                padx=(92, 4) if is_user else (4, 92),
-            )
+            bubble.pack(anchor="e" if is_user else "w", padx=(92, 4) if is_user else (4, 92))
 
             ctk.CTkLabel(
                 bubble,
                 text="You" if is_user else "DIAD",
                 text_color=ACCENT_TEXT if is_user else MUTED_2,
-                font=ctk.CTkFont(size=11, weight="bold"),
+                font=app_font(11, "bold"),
                 anchor="w",
             ).pack(anchor="w", padx=13, pady=(9, 0))
-
             ctk.CTkLabel(
                 bubble,
                 text=content,
                 text_color=ACCENT_TEXT if is_user else TEXT,
-                font=ctk.CTkFont(size=13),
+                font=app_font(13),
                 justify="left",
                 anchor="w",
                 wraplength=bubble_wrap,
@@ -1592,234 +1381,216 @@ class MainPage(ctk.CTkFrame):
         self._scroll_chat_to_latest_message()
 
     def _scroll_chat_to_latest_message(self):
-        """Scroll to the newest bubble after the scrollregion has settled.
-
-        Without this delay, CustomTkinter sometimes keeps the old scrollregion
-        from the previous render, which creates the blank black area at the
-        bottom of the chat until you manually scroll up.
-        """
-
-        def do_scroll():
+        def scroll_later():
             try:
-                self.chat_history.update_idletasks()
-                canvas = self.chat_history._parent_canvas
-                canvas.configure(scrollregion=canvas.bbox("all"))
-                canvas.yview_moveto(1.0)
+                self.chat_history._parent_canvas.update_idletasks()
+                self.chat_history._parent_canvas.yview_moveto(1.0)
             except Exception:
                 pass
 
-        self.after_idle(do_scroll)
-        self.after(80, do_scroll)
-        self.after(180, do_scroll)
+        try:
+            self.after(80, scroll_later)
+        except tk.TclError:
+            pass
+
+    def _categorical_values_for(self, table: str, column: str) -> list[str]:
+        index = getattr(self.state, "categorical_index", {}) or {}
+        for key, values in index.items():
+            try:
+                key_table, key_col = key
+            except Exception:
+                continue
+            if str(key_table) == str(table) and str(key_col) == str(column):
+                return [str(v) for v in values]
+        return []
 
     def refresh_schema_tree(self):
         if not hasattr(self, "schema_tree"):
             return
 
         query = self.schema_search_var.get().strip().lower()
-        self.schema_tree.delete(*self.schema_tree.get_children())
+        selected_before = self.schema_tree.selection()
+        for item in self.schema_tree.get_children():
+            self.schema_tree.delete(item)
 
-        for table, columns in sorted(self.state.schema_map.items()):
-            table_matches = not query or query in table.lower()
-            inserted_table = False
-            table_id = ""
+        for table in sorted(self.state.schema_map.keys()):
+            column_items = list(self._iter_columns(table))
+            searchable_table_text = " ".join([table] + [c for c, _d in column_items]).lower()
+            if query and query not in searchable_table_text:
+                matching_columns = []
+                for col, dtype in column_items:
+                    values = self._categorical_values_for(table, col)
+                    value_blob = " ".join(values).lower()
+                    if query in col.lower() or query in str(dtype).lower() or query in value_blob:
+                        matching_columns.append((col, dtype))
+                if not matching_columns:
+                    continue
+                column_items = matching_columns
 
-            for column in sorted(columns.keys()):
-                values = [str(value) for value in self.state.categorical_index.get((table, column), [])]
-                matching_values = [value for value in values if query and query in value.lower()]
-                value_matches = bool(matching_values)
-                column_matches = not query or query in column.lower() or value_matches
-
-                if table_matches or column_matches:
-                    if not inserted_table:
-                        table_id = self.schema_tree.insert(
-                            "",
-                            "end",
-                            text=table,
-                            open=True,
-                            values=(table, "", "table", ""),
-                        )
-                        inserted_table = True
-
-                    column_id = self.schema_tree.insert(
-                        table_id,
+            table_id = self.schema_tree.insert(
+                "",
+                "end",
+                text=table,
+                open=bool(query),
+                values=(table, "", "table", ""),
+            )
+            for col, dtype in column_items:
+                values = self._categorical_values_for(table, col)
+                col_label = f"{col} ({dtype})"
+                col_id = self.schema_tree.insert(
+                    table_id,
+                    "end",
+                    text=col_label,
+                    open=False,
+                    values=(table, col, "column", ""),
+                )
+                for value in values[:12]:
+                    if query and query not in str(value).lower() and query not in col.lower():
+                        continue
+                    self.schema_tree.insert(
+                        col_id,
                         "end",
-                        text=column,
-                        open=bool(query and value_matches),
-                        values=(table, column, "column", ""),
+                        text=str(value),
+                        values=(table, col, "value", str(value)),
                     )
 
-                    values_to_show = matching_values if query and value_matches else values[:8]
-                    for value in values_to_show[:12]:
-                        self.schema_tree.insert(
-                            column_id,
-                            "end",
-                            text=f"↳ {value}",
-                            values=(table, column, "value", value),
-                        )
+        if selected_before:
+            try:
+                self.schema_tree.selection_set(selected_before[0])
+            except Exception:
+                pass
+        self.show_schema_details()
 
-        self.show_schema_details(clear_only=True)
-
-    def show_schema_details(self, clear_only: bool = False):
-        if not hasattr(self, "schema_detail"):
-            return
-
-        selected = self.schema_tree.selection()
-        if clear_only and not selected:
-            self._set_schema_detail(
-                "Select a table, column, or value to see more detail.\n\n"
-                "Tip: drag or double-click an item to add it to the chat box."
-            )
-            self.schema_summary_label.configure(text=self._schema_counts_text())
-            self.selected_schema_item = None
-            self.selected_schema_kind = None
-            self._update_schema_copy_buttons()
-            self._render_schema_chips([])
-            return
-
-        if not selected:
-            self._set_schema_detail(
-                "Select a table, column, or value to see more detail.\n\n"
-                "Tip: drag or double-click an item to add it to the chat box."
-            )
-            self.schema_summary_label.configure(text=self._schema_counts_text())
-            self.selected_schema_item = None
-            self.selected_schema_kind = None
-            self._update_schema_copy_buttons()
-            self._render_schema_chips([])
-            return
-
-        item = selected[0]
-        values = list(self.schema_tree.item(item, "values") or [])
-        table = str(values[0]) if len(values) > 0 and values[0] else self.schema_tree.item(item, "text")
-        column = str(values[1]) if len(values) > 1 and values[1] else None
-        kind = str(values[2]) if len(values) > 2 and values[2] else ("column" if column else "table")
-        value = str(values[3]) if len(values) > 3 and values[3] else None
-        self.selected_schema_item = (table, column, value if kind == "value" else None)
-        self.selected_schema_kind = kind
-        self._update_schema_copy_buttons()
-
-        if kind == "table" or column is None:
-            columns = list(self.state.schema_map.get(table, {}).keys())
-            text = [f"Table: {table}", "", f"Columns: {len(columns)}", ""]
-            text.append("Double-click or drag this table into the chat box to reference it.")
-            text.append("")
-            for col in columns:
-                text.append(f"- {col}")
-            chip_payloads = [self._make_schema_payload(table=table, kind="table")]
-            self.schema_summary_label.configure(text=f"table • {len(columns)} columns")
-            self._render_schema_chips(chip_payloads)
-        elif kind == "value" and value is not None:
-            dtype = self.state.schema_map.get(table, {}).get(column, "unknown")
-            insert_text = self.controller.format_schema_insert_text(table=table, column=column, value=value)
-            text = [
-                f"Table: {table}",
-                f"Column: {column}",
-                f"Type: {dtype}",
-                f"Value: {value}",
-                "",
-                "Double-click or drag this value into the chat box to add:",
-                insert_text,
-            ]
-            chip_payloads = [
-                self._make_schema_payload(table=table, column=column, kind="column"),
-                self._make_schema_payload(table=table, column=column, value=value, kind="value"),
-            ]
-            self.schema_summary_label.configure(text=f"value • {column}")
-            self._render_schema_chips(chip_payloads)
-        else:
-            dtype = self.state.schema_map.get(table, {}).get(column, "unknown")
-            samples = [str(value) for value in self.state.categorical_index.get((table, column), [])]
-            text = [f"Table: {table}", f"Column: {column}", f"Type: {dtype}", ""]
-            text.append("Double-click or drag this column into the chat box to reference it.")
-            text.append("")
-            if samples:
-                text.append("Sample values shown under this column in the tree:")
-                for sample in samples[:12]:
-                    text.append(f"- {sample}")
-            else:
-                text.append("No sample values available for this column.")
-            chip_payloads = [self._make_schema_payload(table=table, column=column, kind="column")]
-            chip_payloads.extend(
-                self._make_schema_payload(table=table, column=column, value=sample, kind="value")
-                for sample in samples[:7]
-            )
-            self.schema_summary_label.configure(text=f"column • {dtype}")
-            self._render_schema_chips(chip_payloads)
-
-        self._set_schema_detail("\n".join(text))
-
-    def _schema_counts_text(self) -> str:
-        table_count, column_count = self._table_column_counts()
-        return f"{table_count} tables • {column_count} columns"
-
-    def _set_schema_detail(self, text: str):
+    def show_schema_details(self):
+        payload = self._selected_schema_payload()
         self.schema_detail.configure(state="normal")
         self.schema_detail.delete("1.0", tk.END)
-        self.schema_detail.insert(tk.END, text)
-        self.schema_detail.configure(state="disabled")
 
-    def _update_schema_copy_buttons(self):
-        if not hasattr(self, "btn_copy_table") or not hasattr(self, "btn_copy_column"):
-            return
-
-        has_selection = self.selected_schema_item is not None
-        table, column, _value = self.selected_schema_item if has_selection else (None, None, None)
-
-        # Copy table can be used for any selected table/column/value because each item belongs to a table.
-        self.btn_copy_table.configure(state="normal" if table else "disabled")
-
-        # Copy column should only be clickable for real column/value selections.
-        # When a table is selected, column is None, so this stays disabled and cannot copy the table/file text by mistake.
-        column_selected = bool(column) and self.selected_schema_kind in {"column", "value"}
-        self.btn_copy_column.configure(state="normal" if column_selected else "disabled")
-
-    def copy_selected_table(self):
-        if not self.selected_schema_item:
-            self.status.configure(text="Select a table, column, or value first.", text_color=MUTED)
-            return
-        table, _column, _value = self.selected_schema_item
-        if not table:
-            self.status.configure(text="Select a table, column, or value first.", text_color=MUTED)
-            return
-        self.clipboard_clear()
-        self.clipboard_append(table)
-        self.status.configure(text=f"Copied table: {table}", text_color=SUCCESS)
-
-    def copy_selected_column(self):
-        if not self.selected_schema_item:
-            self.status.configure(text="Select a column first.", text_color=MUTED)
-            return
-        _table, column, _value = self.selected_schema_item
-        if not column or self.selected_schema_kind not in {"column", "value"}:
-            self.status.configure(text="Select a column first.", text_color=MUTED)
+        if not payload:
+            self.selected_schema_item = None
+            self.selected_schema_kind = None
+            self.schema_summary_label.configure(text="Nothing selected")
+            self.schema_detail.insert(
+                "1.0",
+                "Select a table, column, or known value to see details here. Double-click it to add it to your next question.",
+            )
+            self.schema_detail.configure(state="disabled")
             self._update_schema_copy_buttons()
             return
-        self.clipboard_clear()
-        self.clipboard_append(column)
-        self.status.configure(text=f"Copied column: {column}", text_color=SUCCESS)
 
-    def _last_user_query(self) -> str | None:
-        for msg in reversed(self.state.messages):
-            if msg.get("role") == "user":
-                text = str(msg.get("content", "")).strip()
-                if text:
-                    return text
-        return None
+        table = payload.get("table", "")
+        column = payload.get("column", "")
+        value = payload.get("value", "")
+        kind = payload.get("kind", "table")
+        self.selected_schema_item = (table, column or None, value or None)
+        self.selected_schema_kind = kind
 
-    def edit_last_query(self):
-        text = self._last_user_query()
-        if not text or self.state.is_busy:
+        if kind == "value":
+            self.schema_summary_label.configure(text="Value")
+            text = f"Table: {table}\nColumn: {column}\nValue: {value}\n\nUse this when you want to filter records where {column} equals this value."
+        elif kind == "column":
+            dtype = "unknown"
+            for col, col_type in self._iter_columns(table):
+                if col == column:
+                    dtype = col_type
+                    break
+            values = self._categorical_values_for(table, column)
+            self.schema_summary_label.configure(text="Column")
+            text = f"Table: {table}\nColumn: {column}\nType: {dtype}"
+            if values:
+                text += "\n\nKnown values:\n" + "\n".join(f"- {v}" for v in values[:25])
+            text += "\n\nUse Copy Column or Insert Selected to avoid typos in prompts."
+        else:
+            columns = list(self._iter_columns(table))
+            self.schema_summary_label.configure(text="Table")
+            text = f"Table: {table}\nColumns: {len(columns)}\n\n"
+            text += "\n".join(f"- {col}: {dtype}" for col, dtype in columns)
+
+        self.schema_detail.insert("1.0", text)
+        self.schema_detail.configure(state="disabled")
+        self._update_schema_copy_buttons()
+
+    def _update_schema_copy_buttons(self):
+        payload = self._selected_schema_payload() if hasattr(self, "schema_tree") else None
+        kind = payload.get("kind") if payload else None
+        has_table = bool(payload and payload.get("table"))
+        has_column = bool(payload and payload.get("column"))
+        state_table = "normal" if has_table else "disabled"
+        state_column = "normal" if has_column else "disabled"
+        for button, state in [
+            (getattr(self, "btn_copy_table", None), state_table),
+            (getattr(self, "btn_copy_column", None), state_column),
+            (getattr(self, "btn_insert_selected", None), "normal" if payload else "disabled"),
+            (getattr(self, "btn_search_selected", None), "normal" if payload else "disabled"),
+        ]:
+            if button is not None:
+                button.configure(state=state)
+        self.selected_schema_kind = kind
+
+    def copy_selected_table(self):
+        payload = self._selected_schema_payload()
+        if not payload or not payload.get("table"):
             return
-        self.chat_entry.configure(state="normal")
-        self.chat_entry.delete(0, tk.END)
-        self.chat_entry.insert(0, text)
-        self.chat_entry.focus_set()
-        try:
-            self.chat_entry.select_range(0, tk.END)
-        except Exception:
-            pass
-        self.status.configure(text="Last query loaded. Edit it and press Send.", text_color=SUCCESS)
+        self.clipboard_clear()
+        self.clipboard_append(payload["table"])
+        self.status.configure(text=f"Copied table: {payload['table']}", text_color=SUCCESS)
+
+    def copy_selected_column(self):
+        payload = self._selected_schema_payload()
+        if not payload or not payload.get("column"):
+            return
+        self.clipboard_clear()
+        self.clipboard_append(payload["column"])
+        self.status.configure(text=f"Copied column: {payload['column']}", text_color=SUCCESS)
+
+    def _render_output_status(self):
+        df = self.state.result_preview
+        export_path = self.state.export_path
+        artifact_path = self.state.artifact_path
+
+        if artifact_path:
+            self.output_summary_label.configure(text=f"Chart ready: {Path(artifact_path).name}", text_color=SUCCESS)
+            self.btn_open_output.configure(state="normal")
+            self.btn_download_output.configure(text="Download Chart", state="normal")
+            return
+
+        if df is not None:
+            try:
+                rows, cols = df.shape
+                text = f"Output ready: {rows} rows × {cols} columns"
+            except Exception:
+                text = "Output ready"
+            self.output_summary_label.configure(text=text, text_color=SUCCESS)
+            self.btn_open_output.configure(state="normal")
+            self.btn_download_output.configure(text="Download CSV", state="normal")
+            return
+
+        if export_path:
+            self.output_summary_label.configure(text=f"Output ready: {Path(export_path).name}", text_color=SUCCESS)
+            self.btn_open_output.configure(state="normal")
+            self.btn_download_output.configure(text="Download CSV", state="normal")
+            return
+
+        self.output_summary_label.configure(text="No output yet", text_color=MUTED)
+        self.btn_open_output.configure(state="disabled")
+        self.btn_download_output.configure(text="Download CSV", state="disabled")
+
+    def _set_busy_controls(self, busy: bool):
+        state = "disabled" if busy else "normal"
+        self.btn_send.configure(state=state)
+        self.btn_edit_last_query.configure(state=state)
+        self.chat_entry.configure(state=state)
+        self.btn_add_files.configure(state=state)
+        if busy:
+            self.progress_bar.grid()
+            if not self._progress_running:
+                self.progress_bar.start()
+                self._progress_running = True
+        else:
+            if self._progress_running:
+                self.progress_bar.stop()
+                self._progress_running = False
+            self.progress_bar.grid_remove()
 
     def on_send(self):
         text = self.chat_entry.get().strip()
@@ -1827,6 +1598,15 @@ class MainPage(ctk.CTkFrame):
             return
         self.chat_entry.delete(0, tk.END)
         self.controller.send_chat(text)
+
+    def edit_last_query(self):
+        for msg in reversed(self.state.messages):
+            if msg.get("role") == "user":
+                self.chat_entry.delete(0, tk.END)
+                self.chat_entry.insert(0, str(msg.get("content", "")))
+                self.chat_entry.focus_set()
+                return
+        self.status.configure(text="No previous query to edit.", text_color=WARNING)
 
     def on_back_to_projects(self):
         self.app.show_page(UploadPage)
@@ -1841,519 +1621,211 @@ class MainPage(ctk.CTkFrame):
         if paths:
             self.controller.add_files_to_current_project(paths)
 
-    def open_schema_window(self):
-        win = ctk.CTkToplevel(self)
-        win.title("Schema")
-        win.geometry("720x520")
-        win.configure(fg_color=APP_BG)
-        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
-        text.pack(fill="both", expand=True, padx=14, pady=14)
-        lines: list[str] = []
-        for table, cols in self.state.schema_map.items():
-            lines.append(table)
-            for col, dtype in cols.items():
-                lines.append(f"  - {col}: {dtype}")
-            lines.append("")
-        text.insert(tk.END, "\n".join(lines) if lines else "No schema loaded.")
-        text.configure(state="disabled")
-
-    def open_categories_window(self):
-        win = ctk.CTkToplevel(self)
-        win.title("Categories")
-        win.geometry("720x520")
-        win.configure(fg_color=APP_BG)
-        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
-        text.pack(fill="both", expand=True, padx=14, pady=14)
-        lines: list[str] = []
-        for (table, col), values in sorted(self.state.categorical_index.items()):
-            lines.append(f"{table}.{col}")
-            for value in values[:50]:
-                lines.append(f"  - {value}")
-            lines.append("")
-        text.insert(tk.END, "\n".join(lines) if lines else "No categorical values loaded.")
-        text.configure(state="disabled")
-
-    def open_sql_window(self):
-        win = ctk.CTkToplevel(self)
-        win.title("Latest SQL")
-        win.geometry("760x480")
-        win.configure(fg_color=APP_BG)
-        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
-        text.pack(fill="both", expand=True, padx=14, pady=14)
-        text.insert(tk.END, self.state.generated_sql or "No SQL generated yet.")
-        text.configure(state="disabled")
-
-    def open_tips_window(self):
-        win = ctk.CTkToplevel(self)
-        win.title("Tips")
-        win.geometry("760x470")
-        win.configure(fg_color=APP_BG)
-        text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
-        text.pack(fill="both", expand=True, padx=14, pady=14)
-        tips_text = """Welcome to DIAD!
-        Below are some tips on how to use the application the most effectively:
-        Prompting:
-        Wording matters! when prompting for a query, the best way to get a good quality response to use the table names directly from the menu bar on the right side of the screen
-        Pro Tip - You can double click the heading in order to insert it directly into the chat box, you can also drag and drop, or select the "quick insert" below the header after clicking
-        Examples of good queries:
-        - List all employees in the engineering department where work_type is "hybrid", return names and employee ID
-        - Show all employees where salary is above 100000 (it is important to note when querying numbers, do not add commas or special signs ex: $ in the query)
-        - List employees where promotion_elligble is "yes"
-        of course, your data may differ, but these are some examples of queries that use direct heading names
-        If a query fails to run, no worries! try rewording and prompting again, DIAD runs view only SQL, so your original data will always remain untouched
-        You can also click "edit last" to pull up your previous query to make rewording easier
-
-        Viewing Data:
-        After a query is ran successfully, the chat window will tell you, in order to view the output, press the "Open Output" button
-        Pro Tip - you can also double click your originally uploaded files to cross compare the data, make sure to double check! DIAD can make mistakes
-        If you would like to view the tables created based on your data, click schemas
-        If you would like to to view the sql that was ran in order to view your query, click "latest sql"
-        If you would like to export a successful query to a .csv file, click "Download CSV"
-
-        Navigation:
-        To go back to the projects panel in order to start a new project or open a previous one, click the projects button
-        If you inserted multiple large tables, you can search for the column heading you would like to query on to make quality prompting easier
-        If you would like to add more files to a working project, you can do so with the "Add Files" Button
-
-        Those are some basic tips to get you started, happy prompting and we hope you enjoy our product!
-        """
-        text.insert(tk.END, tips_text)
-        text.configure(state="disabled")
-
-
-
-    def open_file_external(self, file_path: str | Path):
-        path = Path(file_path)
+    def open_file_preview(self, path: Path):
+        path = Path(path)
         if not path.exists():
-            messagebox.showerror("Open File", f"File not found:\n{path}")
+            messagebox.showinfo("Preview", f"Could not find: {path}")
             return
-
+        if path.suffix.lower() in _IMAGE_EXTENSIONS:
+            self._safe_open_path(path)
+            return
         try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", str(path)])
-            elif os.name == "nt":
-                os.startfile(str(path))  # type: ignore[attr-defined]
+            if path.suffix.lower() == ".csv":
+                df = pd.read_csv(path)
+            elif path.suffix.lower() == ".xlsx":
+                df = pd.read_excel(path)
+            elif path.suffix.lower() == ".json":
+                try:
+                    df = pd.read_json(path)
+                except ValueError:
+                    with path.open("r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    df = pd.json_normalize(data)
             else:
-                subprocess.Popen(["xdg-open", str(path)])
-
-            self.status.configure(text=f"Opened {path.name}", text_color=SUCCESS)
+                self._safe_open_path(path)
+                return
+            self._open_dataframe_window(df, f"Preview: {path.name}")
         except Exception as exc:
-            messagebox.showerror("Open File", str(exc))
+            messagebox.showinfo("Preview", f"Could not preview file:\n{exc}")
 
-    def open_file_preview(self, file_path: str | Path):
-        path = Path(file_path)
-        if not path.exists():
-            messagebox.showerror("File Preview", f"File not found:\n{path}")
-            return
-
-        win = ctk.CTkToplevel(self)
-        win.title(f"File Preview - {path.name}")
+    def _open_dataframe_window(self, df, title: str = "Output"):
+        win = tk.Toplevel(self)
+        win.title(title)
         win.geometry("980x620")
-        win.configure(fg_color=APP_BG)
-        win.grid_rowconfigure(2, weight=1)
-        win.grid_columnconfigure(0, weight=1)
+        win.configure(bg=APP_BG)
 
-        header = ctk.CTkFrame(win, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 8))
-        header.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            header,
-            text=path.name,
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color=TEXT,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="ew")
-
-        table = self._guess_table_for_file(path)
-        meta = self._format_file_card_meta(path)
-        if table:
-            meta += f" • table: {table}"
-
-        ctk.CTkLabel(
-            header,
-            text=f"{meta}\n{path}",
-            text_color=MUTED,
-            justify="left",
-            anchor="w",
-            wraplength=740,
-        ).grid(row=1, column=0, sticky="ew", pady=(4, 0))
-
-        button_row = ctk.CTkFrame(header, fg_color="transparent")
-        button_row.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(12, 0))
-        small_button(button_row, "Open in app", lambda p=path: self.open_file_external(p), width=120).pack(anchor="e")
-        small_button(button_row, "Close", win.destroy, width=120).pack(anchor="e", pady=(8, 0))
-
-        preview_note = ctk.CTkLabel(
-            win,
-            text="Previewing up to the first 500 rows.",
-            text_color=MUTED_2,
-            anchor="w",
-        )
-        preview_note.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
-
-        try:
-            suffix = path.suffix.lower()
-            if suffix == ".csv":
-                df = pd.read_csv(path, nrows=500)
-                self._render_dataframe_preview(win, df)
-                preview_note.configure(text=f"CSV preview • showing {len(df)} row(s)")
-            elif suffix == ".xlsx":
-                excel = pd.ExcelFile(path)
-                sheet_name = excel.sheet_names[0] if excel.sheet_names else 0
-                df = pd.read_excel(path, sheet_name=sheet_name, nrows=500)
-                self._render_dataframe_preview(win, df)
-                preview_note.configure(text=f"XLSX preview • sheet: {sheet_name} • showing {len(df)} row(s)")
-            elif suffix == ".json":
-                df = self._read_json_preview(path)
-                if isinstance(df, pd.DataFrame):
-                    self._render_dataframe_preview(win, df.head(500))
-                    preview_note.configure(text=f"JSON preview • showing {min(len(df), 500)} row(s)")
-                else:
-                    pretty = json.dumps(df, indent=2, ensure_ascii=False)
-                    self._render_text_preview(win, pretty[:50000])
-                    preview_note.configure(text="JSON preview • formatted text")
-            else:
-                self._render_text_preview(win, f"No preview is available for this file type:\n{path.suffix}")
-        except Exception as exc:
-            self._render_text_preview(
-                win,
-                "DIAD could not preview this file.\n\n"
-                f"Error:\n{exc}\n\n"
-                "You can still use Open in app to open it with your computer's default app.",
-            )
-
-
-    def _read_json_preview(self, path: Path):
-        """Return a small DataFrame or parsed JSON object for the preview window."""
-        try:
-            return pd.read_json(path, lines=True)
-        except ValueError:
-            pass
-
-        data = json.loads(path.read_text(encoding="utf-8"))
-
-        if isinstance(data, list):
-            if not data:
-                return pd.DataFrame()
-            if all(isinstance(item, dict) for item in data):
-                return pd.json_normalize(data)
-            return pd.DataFrame({"value": data})
-
-        if isinstance(data, dict):
-            # Common API export shape: {"items": [{...}, {...}]}
-            list_keys = [key for key, value in data.items() if isinstance(value, list)]
-            for key in list_keys:
-                value = data[key]
-                if all(isinstance(item, dict) for item in value):
-                    return pd.json_normalize(value)
-            return data
-
-        return data
-
-    def _render_dataframe_preview(self, parent, df: pd.DataFrame):
-        frame = ctk.CTkFrame(parent, fg_color=SURFACE_2)
-        frame.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 14))
+        frame = tk.Frame(win, bg=APP_BG)
+        frame.pack(fill="both", expand=True, padx=12, pady=12)
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
 
-        tree = ttk.Treeview(frame, style="Dark.Treeview", show="headings")
+        columns = [str(c) for c in list(df.columns)]
+        tree = ttk.Treeview(frame, columns=columns, show="headings", style="Dark.Treeview")
         tree.grid(row=0, column=0, sticky="nsew")
-
         yscroll = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         yscroll.grid(row=0, column=1, sticky="ns")
         xscroll = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
         xscroll.grid(row=1, column=0, sticky="ew")
         tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
 
-        columns = [str(col) for col in df.columns]
-        tree["columns"] = columns
-
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=150, anchor="w")
+            tree.column(col, width=max(120, min(260, len(col) * 12)), anchor="w")
 
-        for _, row in df.iterrows():
-            tree.insert("", "end", values=[str(row[col]) for col in df.columns])
+        max_rows = min(len(df), 1000)
+        for _, row in df.head(max_rows).iterrows():
+            values = ["" if pd.isna(row[col]) else str(row[col]) for col in df.columns]
+            tree.insert("", "end", values=values)
 
-    def _render_text_preview(self, parent, text_value: str):
-        text = ctk.CTkTextbox(
-            parent,
-            fg_color=SURFACE_2,
-            border_width=1,
-            border_color=BORDER_SOFT,
-            corner_radius=14,
-            text_color=TEXT,
-            wrap="word",
-        )
-        text.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 14))
-        text.insert(tk.END, text_value)
-        text.configure(state="disabled")
-
-    def _image_artifact_path(self) -> Path | None:
-        path_value = getattr(self.state, "artifact_path", None)
-        if not path_value:
-            return None
-        path = Path(path_value)
-        if path.suffix.lower() not in _IMAGE_EXTENSIONS:
-            return None
-        if not path.exists():
-            return None
-        return path
-
-    def open_chart_window(self, image_path: str | Path, auto_open: bool = False):
-        path = Path(image_path)
-        if not path.exists():
-            messagebox.showerror("Open Chart", f"Chart file not found:\n{path}")
-            return
-        if path.suffix.lower() not in _IMAGE_EXTENSIONS:
-            messagebox.showerror("Open Chart", f"This does not look like an image file:\n{path}")
-            return
-
-        win = ctk.CTkToplevel(self)
-        win.title(f"Chart Preview - {path.name}")
-        win.geometry("980x720")
-        win.configure(fg_color=APP_BG)
-        win.grid_rowconfigure(2, weight=1)
-        win.grid_columnconfigure(0, weight=1)
-
-        header = ctk.CTkFrame(win, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 8))
-        header.grid_columnconfigure(0, weight=1)
-
-        title_text = "Chart opened automatically" if auto_open else "Chart Preview"
-        ctk.CTkLabel(
-            header,
-            text=title_text,
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color=TEXT,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="ew")
-
-        ctk.CTkLabel(
-            header,
-            text=f"{path.name}\n{path}",
-            text_color=MUTED,
-            justify="left",
-            anchor="w",
-            wraplength=700,
-        ).grid(row=1, column=0, sticky="ew", pady=(4, 0))
-
-        button_row = ctk.CTkFrame(header, fg_color="transparent")
-        button_row.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(12, 0))
-        primary_button(button_row, "Download Chart", lambda p=path: self.download_chart_file(p), width=135).pack(anchor="e")
-        small_button(button_row, "Open in app", lambda p=path: self.open_file_external(p), width=135).pack(anchor="e", pady=(8, 0))
-        small_button(button_row, "Close", win.destroy, width=135).pack(anchor="e", pady=(8, 0))
-
-        note = ctk.CTkLabel(
+        footer = tk.Label(
             win,
-            text="The chart image is shown below. Use Download Chart to save a copy.",
-            text_color=MUTED_2,
-            anchor="w",
+            text=f"Showing {max_rows} of {len(df)} rows",
+            bg=APP_BG,
+            fg=MUTED,
+            font=tk_app_font(11),
         )
-        note.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
+        footer.pack(anchor="w", padx=14, pady=(0, 10))
 
-        body = ctk.CTkFrame(
-            win,
-            fg_color=SURFACE_2,
-            border_width=1,
-            border_color=BORDER_SOFT,
-            corner_radius=14,
-        )
-        body.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 14))
-        body.grid_rowconfigure(0, weight=1)
-        body.grid_columnconfigure(0, weight=1)
+    def open_output_window(self):
+        if self.state.artifact_path:
+            self._safe_open_path(Path(self.state.artifact_path))
+            return
+        if self.state.result_preview is not None:
+            self._open_dataframe_window(self.state.result_preview, "DIAD Output")
+            return
+        if self.state.export_path:
+            path = Path(self.state.export_path)
+            if path.suffix.lower() in _IMAGE_EXTENSIONS:
+                self._safe_open_path(path)
+                return
+            try:
+                self._open_dataframe_window(pd.read_csv(path), "DIAD Output")
+            except Exception:
+                self._safe_open_path(path)
+            return
+        messagebox.showinfo("Open Output", "No output is available yet.")
 
-        if Image is None:
-            ctk.CTkLabel(
-                body,
-                text="Pillow is not installed, so DIAD cannot show the image inside this window.\nUse Open in app or Download Chart instead.",
-                text_color=TEXT,
-                justify="center",
-            ).grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
+    def download_output_csv(self):
+        if self.state.artifact_path:
+            source = Path(self.state.artifact_path)
+            default_ext = source.suffix or ".png"
+            filetypes = [("Image file", f"*{default_ext}"), ("All files", "*.*")]
+            title = "Save chart"
+        elif self.state.export_path:
+            source = Path(self.state.export_path)
+            default_ext = ".csv"
+            filetypes = [("CSV file", "*.csv"), ("All files", "*.*")]
+            title = "Save CSV"
+        else:
+            messagebox.showinfo("Download", "No output is available yet.")
             return
 
-        try:
-            image = Image.open(path)
-            image.thumbnail((920, 560), Image.Resampling.LANCZOS)
-            ctk_image = ctk.CTkImage(light_image=image, dark_image=image, size=image.size)
-            image_label = ctk.CTkLabel(body, text="", image=ctk_image)
-            image_label.image = ctk_image
-            image_label.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
-        except Exception as exc:
-            ctk.CTkLabel(
-                body,
-                text=f"DIAD could not preview this chart image.\n\nError:\n{exc}",
-                text_color=ERROR,
-                justify="center",
-            ).grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
-
-    def download_chart_file(self, image_path: str | Path | None = None):
-        path = Path(image_path) if image_path else self._image_artifact_path()
-        if not path or not path.exists():
-            messagebox.showinfo("Download Chart", "No chart image is available yet.")
-            return
-
-        suffix = path.suffix.lower() or ".png"
-        filetypes = [
-            ("PNG image", "*.png"),
-            ("JPEG image", "*.jpg *.jpeg"),
-            ("WebP image", "*.webp"),
-            ("GIF image", "*.gif"),
-            ("All files", "*.*"),
-        ]
         target = filedialog.asksaveasfilename(
-            title="Save chart image",
-            defaultextension=suffix,
-            initialfile=path.name,
+            title=title,
+            defaultextension=default_ext,
+            initialfile=source.name,
             filetypes=filetypes,
         )
         if not target:
             return
         try:
-            shutil.copyfile(path, target)
-            messagebox.showinfo("Download Chart", f"Saved to:\n{target}")
+            shutil.copy2(source, target)
+            self.status.configure(text=f"Saved to {target}", text_color=SUCCESS)
         except Exception as exc:
-            messagebox.showerror("Download Chart", str(exc))
+            messagebox.showinfo("Download", f"Could not save file:\n{exc}")
 
-    def open_output_window(self):
-        image_path = self._image_artifact_path()
-        if image_path is not None:
-            self.open_chart_window(image_path)
-            return
+    def open_schema_window(self):
+        lines = []
+        for table in sorted(self.state.schema_map.keys()):
+            lines.append(f"{table}")
+            for col, dtype in self._iter_columns(table):
+                lines.append(f"  - {col}: {dtype}")
+            lines.append("")
+        self._open_text_window("Schema", "\n".join(lines).strip() or "No schema loaded.")
 
-        if self.state.result_preview is None:
-            messagebox.showinfo("Output", "No output table yet.")
-            return
-        win = ctk.CTkToplevel(self)
-        win.title("Output Preview")
-        win.geometry("900x560")
-        win.configure(fg_color=APP_BG)
+    def open_categories_window(self):
+        lines = []
+        for key, values in sorted((self.state.categorical_index or {}).items(), key=lambda item: str(item[0])):
+            try:
+                table, column = key
+            except Exception:
+                table, column = "", str(key)
+            lines.append(f"{table}.{column}")
+            for value in list(values)[:50]:
+                lines.append(f"  - {value}")
+            lines.append("")
+        self._open_text_window("Categories", "\n".join(lines).strip() or "No categorical values loaded.")
 
-        df = self.state.result_preview
-        if isinstance(df, pd.DataFrame):
-            frame = ctk.CTkFrame(win, fg_color=SURFACE_2)
-            frame.pack(fill="both", expand=True, padx=14, pady=14)
-            frame.grid_rowconfigure(0, weight=1)
-            frame.grid_columnconfigure(0, weight=1)
-            tree = ttk.Treeview(frame, style="Dark.Treeview", show="headings")
-            tree.grid(row=0, column=0, sticky="nsew")
-            yscroll = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-            yscroll.grid(row=0, column=1, sticky="ns")
-            xscroll = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
-            xscroll.grid(row=1, column=0, sticky="ew")
-            tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+    def open_sql_window(self):
+        self._open_text_window("Latest SQL", self.state.generated_sql or "No SQL generated yet.")
 
-            tree["columns"] = list(df.columns)
-            for col in df.columns:
-                tree.heading(col, text=str(col))
-                tree.column(col, width=140, anchor="w")
-            for _, row in df.head(500).iterrows():
-                tree.insert("", "end", values=[str(row[col]) for col in df.columns])
-        else:
-            text = ctk.CTkTextbox(win, fg_color=SURFACE_2, text_color=TEXT, wrap="word")
-            text.pack(fill="both", expand=True, padx=14, pady=14)
-            text.insert(tk.END, str(df))
-            text.configure(state="disabled")
+    def open_tips_window(self):
+        tips = """Try prompts like:
 
-    def download_output_csv(self):
-        image_path = self._image_artifact_path()
-        if image_path is not None:
-            self.download_chart_file(image_path)
-            return
+- What columns are in this project?
+- Show users where status is Active
+- Sort employees by salary descending
+- Count records by department
+- Average salary by team
+- Make a bar chart of employees by department
 
-        if not self.state.export_path:
-            messagebox.showinfo("Download CSV", "No CSV output available yet.")
-            return
-        target = filedialog.asksaveasfilename(
-            title="Save output CSV",
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv")],
+Tips:
+- Use the Data Guide when you are unsure of exact column names.
+- Double-click a table, column, or value to insert it into the chat box.
+- Turn on DIAD_DEBUG_MESSAGES=1 before running the app if you want routing and SQL repair details."""
+        self._open_text_window("Tips", tips)
+
+    def _open_text_window(self, title: str, text: str):
+        win = tk.Toplevel(self)
+        win.title(title)
+        win.geometry("780x560")
+        win.configure(bg=APP_BG)
+        box = tk.Text(
+            win,
+            bg=SURFACE_2,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+            wrap="word",
+            font=tk_app_font(12),
+            padx=12,
+            pady=12,
         )
-        if not target:
-            return
-        try:
-            shutil.copyfile(self.state.export_path, target)
-            messagebox.showinfo("Download CSV", f"Saved to:\n{target}")
-        except Exception as exc:
-            messagebox.showerror("Download CSV", str(exc))
+        box.pack(fill="both", expand=True, padx=12, pady=12)
+        box.insert("1.0", text)
+        box.configure(state="disabled")
 
-    def _show_progress(self, visible: bool):
-        if not hasattr(self, "progress_bar"):
+    def _handle_auto_open_artifact(self):
+        path = self.state.auto_open_artifact_path
+        if not path:
             return
-        if visible:
-            self.progress_bar.grid()
-            if not self._progress_running:
-                self.progress_bar.start()
-                self._progress_running = True
-        else:
-            if self._progress_running:
-                self.progress_bar.stop()
-                self._progress_running = False
-            self.progress_bar.grid_remove()
+        path = Path(path)
+        if self._last_auto_open_path == path:
+            return
+        self._last_auto_open_path = path
+        self._safe_open_path(path)
 
     def render(self):
-        self.project_label.configure(text=self.state.current_project_name or "No project open")
+        project_name = self.state.current_project_name or "No project open"
+        self.project_label.configure(text=project_name)
         self.project_path_label.configure(text=str(self.state.current_project_path or ""))
-        self.title_label.configure(text=f"Chat with {self.state.current_project_name}" if self.state.current_project_name else "Chat with your data")
-        self.result_hint.configure(text=f"Project: {self.state.current_project_name}" if self.state.current_project_name else "")
 
         self._render_files()
         self._render_messages()
         self.refresh_schema_tree()
+        self._render_output_status()
+        self._set_busy_controls(self.state.is_busy)
+        self._handle_auto_open_artifact()
 
-        busy = self.state.is_busy
-        image_path = self._image_artifact_path()
-        has_chart = image_path is not None
-        has_output = self.state.result_preview is not None or self.state.export_path is not None or has_chart
-        self.btn_send.configure(state="disabled" if busy else "normal")
-        last_query_available = self._last_user_query() is not None
-        self.btn_edit_last_query.configure(state="normal" if last_query_available and not busy else "disabled")
-        self.chat_entry.configure(state="disabled" if busy else "normal")
-        self.btn_open_output.configure(state="normal" if has_output and not busy else "disabled")
-        self.btn_download_output.configure(state="normal" if ((has_chart or self.state.export_path) and not busy) else "disabled")
-        self.btn_open_output.configure(text="Open Chart" if has_chart else "Open Output")
-        self.btn_download_output.configure(text="Download Chart" if has_chart else "Download CSV")
-        self.btn_add_files.configure(state="disabled" if busy else "normal")
-
-        if busy:
-            status_message = getattr(self.state, "status_message", None) or "Running request..."
-            self.status.configure(text=status_message, text_color=WARNING)
-            self._show_progress(True)
+        table_count, column_count = self._table_column_counts()
+        if self.state.is_busy:
+            self.status.configure(text=self.state.status_message or "Working...", text_color=WARNING)
         elif self.state.error:
-            self._show_progress(False)
             self.status.configure(text=f"Error: {self.state.error}", text_color=ERROR)
         else:
-            self._show_progress(False)
-            self.status.configure(text="Ready", text_color=MUTED)
-
-        if has_output:
-            if has_chart:
-                detail = "Chart ready"
-                if isinstance(self.state.result_preview, pd.DataFrame):
-                    rows, cols = self.state.result_preview.shape
-                    detail += f" • chart data: {rows} rows • {cols} columns"
-                self.output_summary_label.configure(text=detail, text_color=SUCCESS)
-            elif isinstance(self.state.result_preview, pd.DataFrame):
-                rows, cols = self.state.result_preview.shape
-                self.output_summary_label.configure(text=f"Output ready • {rows} rows • {cols} columns", text_color=SUCCESS)
-            else:
-                self.output_summary_label.configure(text="Output ready", text_color=SUCCESS)
-        else:
-            self.output_summary_label.configure(text="No output yet", text_color=MUTED)
-
-        auto_open_path = getattr(self.state, "auto_open_artifact_path", None)
-        if auto_open_path and not busy:
-            path = Path(auto_open_path)
-            self.state.auto_open_artifact_path = None
-            if path.exists() and path.suffix.lower() in _IMAGE_EXTENSIONS:
-                self.after_idle(lambda p=path: self.open_chart_window(p, auto_open=True))
-
-
-def main():
-    app = TkApp()
-    app.mainloop()
+            self.status.configure(text=f"Ready • {table_count} table(s), {column_count} column(s)", text_color=MUTED)
 
 
 if __name__ == "__main__":
-    main()
+    app = TkApp()
+    app.mainloop()
